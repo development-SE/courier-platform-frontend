@@ -1,0 +1,97 @@
+.address-modal {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  max-width: 420px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  animation: slideUp 0.3s ease-out;
+}
+
+.address-modal,
+.address-modal * {
+  box-sizing: border-box;
+}
+
+.address-tabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem 0;
+}
+
+.tab-btn {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: #1f2937;
+}
+
+.tab-btn.active {
+  background: #cd5e3d;
+  border-color: #cd5e3d;
+  color: #ffffff;
+}
+
+.address-form {
+  padding: 1rem 1.5rem 1.5rem;
+}
+
+.address-form .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.address-form .form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.address-form .form-group label {
+  margin-bottom: 0.35rem;
+  font-weight: 500;
+  color: #333;
+  font-size: 0.85rem;
+}
+
+.address-form input,
+.address-form select {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: white;
+  width: 100%;
+}
+
+.address-form input:focus,
+.address-form select:focus {
+  outline: none;
+  border-color: #2196f3;
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+}
+
+.address-form .input-error {
+  border-color: #d32f2f;
+}
+
+.address-form .error-text {
+  color: #d32f2f;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
+
+.address-form .modal-footer {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  padding-top: 0.75rem;
+}

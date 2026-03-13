@@ -1,0 +1,160 @@
+﻿import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { addressesApi } from '../../../mocks/api/addresses.api'
+import { ordersApi } from '../../../mocks/api/orders.api'
+import {
+  formatPhone,
+  isValidDateTime,
+  isValidPhone,
+  isValidRecipientName,
+} from '../orderFormUtils'
+
+const getInitialFormData = () => ({
+  serviceType: '',
+  comments: '',
+  dropoffStreet: '',
+  dropoffHouse: '',
+  dropoffApartment: '',
+  dropoffEntrance: '',
+  recipientName: '',
+  recipientPhone: '',
+  pickupPoint: '',
+  pickupContact: '',
+  courierId: '',
+  deliveryType: '',
+  plannedPickupTime: '',
+})
+
+export const useOrderCreateForm = () => {
+  const navigate = useNavigate()
+  const [loading, setLoading] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
+  const [pickupPoints, setPickupPoints] = useState([])
+  const [formData, setFormData] = useState(getInitialFormData)
+  const [errors, setErrors] = useState({})
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true)
+      try {
+        const addressesData = await addressesApi.list({
+          type: 'company',
+          page: 1,
+          pageSize: 1000,
+        })
+        setPickupPoints(addressesData.items)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+  }, [])
+
+  const pickupOptions = useMemo(() => (
+    pickupPoints.map(point => ({
+      value: point.id,
+      label: `${point.street}, ${point.house}${point.apartment ? `, кв. ${point.apartment}` : ''}`,
+    }))
+  ), [pickupPoints])
+
+  const setFieldValue = (name, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [name]: value,
+    }))
+
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: '',
+      }))
+    }
+  }
+
+  const handleChange = (event) => {
+    const { name, value } = event.target
+    setFieldValue(name, value)
+  }
+
+  const handlePhoneChange = (event) => {
+    setFieldValue('recipientPhone', formatPhone(event.target.value))
+  }
+
+  const validate = () => {
+    const nextErrors = {}
+
+    if (!formData.serviceType) nextErrors.serviceType = 'Выберите тип сервиса'
+
+    if (!formData.dropoffStreet.trim() || formData.dropoffStreet.trim().length < 2) {
+      nextErrors.dropoffStreet = 'Введите корректную улицу'
+    }
+
+    if (!formData.dropoffHouse.trim()) {
+      nextErrors.dropoffHouse = 'Дом обязателен'
+    }
+
+    if (!formData.recipientName.trim() || !isValidRecipientName(formData.recipientName)) {
+      nextErrors.recipientName = 'Введите имя и фамилию'
+    }
+
+    if (!formData.recipientPhone.trim()) {
+      nextErrors.recipientPhone = 'Телефон обязателен'
+    } else if (!isValidPhone(formData.recipientPhone)) {
+      nextErrors.recipientPhone = 'Неверный формат телефона'
+    }
+
+    if (!formData.pickupPoint) nextErrors.pickupPoint = 'Выберите точку забора'
+
+    if (!isValidDateTime(formData.plannedPickupTime)) {
+      nextErrors.plannedPickupTime = 'Формат: MM/DD/YYYY HH:mm'
+    }
+
+    setErrors(nextErrors)
+    return Object.keys(nextErrors).length === 0
+  }
+
+  const resetForm = () => {
+    setFormData(getInitialFormData())
+    setErrors({})
+  }
+
+  const handleSave = async (assign = false) => {
+    if (!validate()) return
+    setLoading(true)
+    setSuccessMessage('')
+
+    try {
+      const selectedPickupPoint = pickupPoints.find(point => point.id === formData.pickupPoint)
+
+      const order = await ordersApi.create({
+        ...formData,
+        pickupStreet: selectedPickupPoint?.street || '',
+        pickupHouse: selectedPickupPoint?.house || '',
+        courierName: '',
+        status: assign ? 'Assigned' : 'Created',
+      })
+
+      setSuccessMessage(`Заказ создан: ${order.orderNumber}`)
+      resetForm()
+      navigate('/orders', { replace: true })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCancel = () => navigate('/orders')
+
+  return {
+    loading,
+    successMessage,
+    formData,
+    errors,
+    pickupOptions,
+    handleChange,
+    handlePhoneChange,
+    handleCancel,
+    handleSave,
+  }
+}
+

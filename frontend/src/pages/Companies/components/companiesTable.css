@@ -1,0 +1,109 @@
+.companies-table-wrapper {
+  overflow-x: auto;
+  margin: 1rem 0 1.5rem;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #e6eef8;
+  box-shadow: 0 6px 16px rgba(26, 86, 219, 0.06);
+}
+
+.companies-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #ffffff;
+}
+
+.companies-table thead {
+  background: #f7f9fc;
+  border-bottom: 1px solid #e6eef8;
+}
+
+.companies-table th {
+  padding: 0.85rem 1rem;
+  text-align: left;
+  font-weight: 700;
+  color: #6b7280;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.companies-table td {
+  padding: 0.95rem 1rem;
+  border-bottom: 1px solid #eef3fb;
+  color: #111827;
+  font-size: 0.9rem;
+  vertical-align: middle;
+}
+
+.companies-table tbody tr {
+  cursor: pointer;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.companies-table tbody tr:hover {
+  background: #f9fbff;
+}
+
+.companies-table tbody tr.selected {
+  background: #ffefea;
+}
+
+.checkbox-col {
+  width: 45px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.checkbox-col input[type='checkbox'] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: #cd5e3d;
+}
+
+.number-col {
+  width: 50px;
+  text-align: center;
+  color: #9ca3af;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.director-col {
+  min-width: 180px;
+}
+
+.director-primary {
+  font-weight: 700;
+  color: #0f172a;
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.director-secondary {
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
+.bin-col {
+  min-width: 140px;
+  color: #334155;
+}
+
+.company-col {
+  min-width: 200px;
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.companies-empty {
+  padding: 3rem 1rem;
+  text-align: center;
+  color: #94a3b8;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px dashed #d8e6ff;
+  font-size: 0.95rem;
+}

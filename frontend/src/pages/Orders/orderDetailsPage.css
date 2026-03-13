@@ -1,0 +1,395 @@
+﻿.order-details-page {
+  padding: 1.25rem 1.5rem 2rem;
+}
+
+.order-details-header h1 {
+  margin: 0 0 1rem;
+  font-size: 1.6rem;
+  color: #0f172a;
+}
+
+.order-summary {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 1rem;
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e6eef8;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 6px 16px rgba(26, 86, 219, 0.06);
+  margin-bottom: 1.5rem;
+}
+
+.order-number {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #0f172a;
+}
+
+.order-tracking {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.order-tracking span {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.order-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cbd5f5;
+}
+
+.status-dot.available {
+  background: #ef4444;
+}
+
+.status-dot.assigned {
+  background: #22c55e;
+}
+
+.order-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.btn-outline {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
+.btn-danger {
+  padding: 0.45rem 0.9rem;
+  border: none;
+  background: #cd5e3d;
+  color: #ffffff;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #da6846;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.details-card {
+  background: #ffffff;
+  border: 1px solid #e6eef8;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 6px 16px rgba(26, 86, 219, 0.06);
+}
+
+.details-card h3 {
+  margin: 0 0 0.9rem;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.75rem;
+}
+
+.info-row span {
+  font-size: 0.78rem;
+  color: #6b7280;
+}
+
+.info-row strong {
+  font-size: 0.9rem;
+  color: #111827;
+  font-weight: 600;
+}
+
+.info-row strong.paid {
+  color: #16a34a;
+}
+
+.courier-card {
+  min-height: 260px;
+}
+
+.courier-pending {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.courier-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #6b7280;
+}
+
+.courier-title {
+  font-weight: 600;
+  color: #374151;
+}
+
+.courier-subtitle {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -150px;
+  width: 150px;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  animation: shimmer 1.6s infinite;
+}
+
+.skeleton-line {
+  width: 100%;
+  height: 10px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-line.short {
+  width: 70%;
+}
+
+.skeleton-line::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -150px;
+  width: 150px;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  animation: shimmer 1.6s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(300px); }
+}
+
+.courier-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.courier-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.courier-name {
+  font-weight: 700;
+}
+
+.courier-id {
+  font-size: 0.78rem;
+  color: #6b7280;
+}
+
+.rating {
+  color: #f59e0b;
+}
+
+.rating span {
+  color: #6b7280;
+  font-size: 0.85rem;
+  margin-left: 0.3rem;
+}
+
+.route-card {
+  grid-column: span 2;
+}
+
+.route-point {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.route-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 0.2rem;
+}
+
+.route-dot.pickup {
+  background: #22c55e;
+}
+
+.route-dot.dropoff {
+  background: #ef4444;
+}
+
+.route-line {
+  height: 30px;
+  border-left: 2px solid #e5e7eb;
+  margin-left: 4px;
+  margin-bottom: 0.75rem;
+}
+
+.route-label {
+  font-size: 0.78rem;
+  color: #6b7280;
+}
+
+.route-value {
+  font-size: 0.9rem;
+  color: #111827;
+  font-weight: 600;
+}
+
+.link-button {
+  margin-top: 0.25rem;
+  background: none;
+  border: none;
+  color: #f97316;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0;
+}
+
+.timeline-card {
+  grid-column: span 1;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.timeline-item {
+  position: relative;
+  padding-left: 1.4rem;
+}
+
+.timeline-dot {
+  position: absolute;
+  left: 0;
+  top: 0.2rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e5e7eb;
+}
+
+.timeline-item.active .timeline-dot {
+  background: #22c55e;
+}
+
+.timeline-line {
+  position: absolute;
+  left: 4px;
+  top: 16px;
+  width: 2px;
+  height: calc(100% - 12px);
+  background: #e5e7eb;
+}
+
+.timeline-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.timeline-meta {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.btn-ghost {
+  border: 1px dashed #d1d5db;
+  background: #ffffff;
+  color: #6b7280;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 1100px) {
+  .details-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .route-card {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 900px) {
+  .order-summary {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+
+  .order-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .route-card {
+    grid-column: span 1;
+  }
+}

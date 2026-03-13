@@ -1,0 +1,116 @@
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.confirm-dialog {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 2rem 2.2rem 2.1rem;
+  width: 100%;
+  max-width: 420px;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.22);
+  text-align: center;
+  color: #3b3b3b;
+  animation: confirmPop 0.2s ease-out;
+}
+
+@keyframes confirmPop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.confirm-icon {
+  margin: 0 auto 1.05rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirm-icon-img {
+  width: 70px;
+  height: 50px;
+  object-fit: contain;
+}
+
+.confirm-body {
+  margin-bottom: 1.35rem;
+}
+
+.confirm-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #3b3b3b;
+  letter-spacing: -0.2px;
+}
+
+.confirm-message {
+  margin: 0;
+  color: #3b3b3b;
+  opacity: 0.92;
+  line-height: 1.6;
+  font-size: 1.05rem;
+}
+
+.confirm-footer {
+  display: flex;
+  gap: 0.85rem;
+  justify-content: center;
+}
+
+.btn-confirm,
+.btn-cancel {
+  padding: 0.75rem 1.9rem;
+  min-width: 130px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 1.02rem;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  border: 1px solid transparent;
+  color: #3b3b3b;
+}
+
+.btn-confirm {
+  background: #CD5E3D;
+  color: #ffffff;
+}
+
+.btn-confirm:hover:not(:disabled) {
+  background: #da6846;
+  border-color: #CD5E3D;
+  transform: translateY(-1px);
+}
+
+.btn-cancel {
+  background: #ffffff;
+  border-color: #e5e7eb;
+}
+
+.btn-cancel:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #dbe1ea;
+}
+
+.btn-confirm:disabled,
+.btn-cancel:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}

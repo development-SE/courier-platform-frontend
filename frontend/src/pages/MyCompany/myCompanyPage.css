@@ -1,0 +1,310 @@
+.company-profile-page {
+  padding: 1rem 1.25rem 1.5rem;
+  background: #ffffff;
+  min-height: 100%;
+}
+
+.company-profile-header {
+  margin-bottom: 1rem;
+}
+
+.company-profile-header h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.page-error {
+  background: #ffebee;
+  color: #d32f2f;
+  padding: 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  border-left: 4px solid #d32f2f;
+  font-size: 0.92rem;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.profile-card {
+  background: #ffffff;
+  border: 1px solid #e6eef8;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 6px 16px rgba(26, 86, 219, 0.06);
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.card-header h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+  color: #111827;
+}
+
+.card-header p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.card-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.card-body {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.field-row label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.field-row span {
+  font-size: 0.95rem;
+  color: #111827;
+  font-weight: 500;
+}
+
+.input {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: #ffffff;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.company-btn-outline {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  color: #374151;
+  font-weight: 600;
+}
+
+.company-btn-outline:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
+.company-btn-primary {
+  padding: 0.45rem 0.9rem;
+  border: none;
+  background: #cd5e3d;
+  color: #ffffff;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.company-btn-primary:hover:not(:disabled) {
+  background: #da6846;
+}
+
+.company-btn-outline:disabled,
+.company-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.section-card {
+  background: #ffffff;
+  border: 1px solid #e6eef8;
+  border-radius: 10px;
+  box-shadow: 0 6px 16px rgba(26, 86, 219, 0.06);
+  padding: 1rem 1.25rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.section-header h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  color: #111827;
+}
+
+.section-header p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.section-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.company-search-input {
+  width: 260px;
+  max-width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #dbe7fb;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.company-search-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.company-btn-add {
+  padding: 0.5rem 0.9rem;
+  background: #cd5e3d;
+  color: #ffffff;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  min-height: 34px;
+  white-space: nowrap;
+  border: none;
+}
+
+.company-btn-add:hover:not(:disabled) {
+  background: #da6846;
+}
+
+.company-btn-add:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.company-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+}
+
+.company-profile-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #ffffff;
+  table-layout: fixed;
+}
+
+.company-profile-table th {
+  text-align: left;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #6b7280;
+  font-weight: 700;
+  padding: 0.85rem 1rem;
+  background: #f7f9fc;
+  border-bottom: 1px solid #e6eef8;
+}
+
+.company-profile-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #eef2f7;
+  font-size: 0.9rem;
+  color: #111827;
+  vertical-align: middle;
+}
+
+.company-profile-table tbody tr:hover {
+  background: #f9fbff;
+}
+
+.company-empty-row {
+  text-align: center;
+  color: #94a3b8;
+  padding: 1.5rem 1rem;
+}
+
+.company-actions-col {
+  text-align: center;
+  white-space: nowrap;
+  width: 120px;
+}
+
+.company-actions-col .company-icon-btn {
+  margin-left: 0;
+}
+
+.company-actions-col .company-icon-btn + .company-icon-btn {
+  margin-left: 0.4rem;
+}
+
+.company-icon-btn {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: #64748b;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-left: 0.4rem;
+  transition: all 0.2s ease;
+}
+
+.company-icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.company-icon-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #dbe1ea;
+  color: #0f172a;
+}
+
+.company-icon-btn.danger {
+  color: #d24b4b;
+  border-color: #f1cfc3;
+}
+
+.company-icon-btn.danger:hover:not(:disabled) {
+  background: #fff4ef;
+  border-color: #f1cfc3;
+}
