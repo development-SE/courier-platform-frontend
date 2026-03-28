@@ -14,12 +14,10 @@ export const CompanyModal = ({
     ? {
         name: company.name || '',
         bin: company.bin || '',
-        director: company.director || '',
       }
     : {
         name: '',
         bin: '',
-        director: '',
       }
 
   const [formData, setFormData] = useState(initialFormData)
@@ -30,12 +28,12 @@ export const CompanyModal = ({
       ? {
           name: company.name || '',
           bin: company.bin || '',
-          director: company.director || '',
+      
         }
       : {
           name: '',
           bin: '',
-          director: '',
+      
         }
     if (Object.keys(newFormData).some(key => formData[key] !== newFormData[key])) {
       setFormData(newFormData)
@@ -69,10 +67,6 @@ export const CompanyModal = ({
       newErrors.bin = 'БИН обязателен'
     } else if (!/^\d{12}$/.test(formData.bin)) {
       newErrors.bin = 'БИН должен быть 12 цифр'
-    }
-
-    if (!formData.director.trim()) {
-      newErrors.director = 'Директор обязателен'
     }
 
     setErrors(newErrors)

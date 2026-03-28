@@ -14,7 +14,7 @@ export const SignInPage = () => {
 
   const redirectTo = location.state?.from?.pathname
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     setError('')
 
@@ -25,7 +25,7 @@ export const SignInPage = () => {
 
     setLoading(true)
     try {
-      const session = auth.signIn(email, password)
+      const session = await auth.signIn(email, password)
       navigate(redirectTo || auth.getDefaultRoute(session), { replace: true })
     } catch (err) {
       setError(err.message)

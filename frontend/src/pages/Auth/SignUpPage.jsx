@@ -6,29 +6,26 @@ import './auth.css'
 
 export const SignUpPage = () => {
   const navigate = useNavigate()
-  const [name, setName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     setError('')
 
-    if (!name.trim() || !email.trim() || !password.trim()) {
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim()) {
       setError('All fields are required')
-      return
-    }
-
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters')
       return
     }
 
     setLoading(true)
     try {
-      auth.signUp({ name, email, password })
+      await auth.signUp({ firstName, lastName, email, password, phone })
       navigate('/sign-in', { replace: true })
     } catch (err) {
       setError(err.message)
@@ -59,24 +56,38 @@ export const SignUpPage = () => {
           <form className="auth-form" onSubmit={handleSubmit}>
             <input
               type="text"
-              placeholder="Name"
-              value={name}
-              onChange={event => setName(event.target.value)}
+              placeholder="First Name"
+              value={firstName}
+              onChange={e => setFirstName(e.target.value)}
+            />
+            <input
+              type="text"
+              placeholder="Last Name"
+              value={lastName}
+              onChange={e => setLastName(e.target.value)}
+            />
+            <input
+              type="text"
+              placeholder="Phone (optional)"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
             />
             <input
               type="email"
               placeholder="Email"
               value={email}
-              onChange={event => setEmail(event.target.value)}
+              onChange={e => setEmail(e.target.value)}
             />
             <input
               type="password"
               placeholder="Password"
               value={password}
-              onChange={event => setPassword(event.target.value)}
+              onChange={e => setPassword(e.target.value)}
             />
             {error && <div className="auth-error">{error}</div>}
-            <button type="submit" disabled={loading}>{loading ? 'Signing up...' : 'Sign up'}</button>
+            <button type="submit" disabled={loading}>
+              {loading ? 'Signing up...' : 'Sign up'}
+            </button>
           </form>
         </div>
       </div>

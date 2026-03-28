@@ -32,19 +32,24 @@ export const AddressesTable = ({
   }
 
   const getOwnerInfo = (address) => {
-    if (address.type === 'company') {
-      const company = companies.find(c => c.id === address.ownerId)
-      return {
-        name: company?.name || '—',
-        meta: company?.bin || '',
-      }
+  // backend returns companyId directly
+  if (address.companyId) {
+    const company = companies.find(c => c.id === address.companyId)
+    return {
+      name: company?.name || '—',
+      meta: company?.bin || '',
     }
+  }
+  // fallback for user addresses
+  if (address.ownerId) {
     const user = users.find(u => u.id === address.ownerId)
     return {
       name: user ? `${user.firstName} ${user.lastName}` : '—',
       meta: user?.email || '',
     }
   }
+  return { name: '—', meta: '' }
+}
 
   if (addresses.length === 0) {
     return (

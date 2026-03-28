@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { addressesApi } from '../../../mocks/api/addresses.api'
-import { companiesApi } from '../../../mocks/api/companies.api'
-import { usersApi } from '../../../mocks/api/users.api'
+import { addressesApi } from '../../../api/addresses.api'
+import { companiesApi } from '../../../api/companies.api'
+import { usersApi } from '../../../api/users.api'
 
 export const useAddresses = (initialPageSize = 10) => {
   const [addresses, setAddresses] = useState([])

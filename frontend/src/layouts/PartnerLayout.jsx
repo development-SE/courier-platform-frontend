@@ -135,12 +135,7 @@ export const PartnerLayout = ({ children, currentPage }) => {
             </button>
             <div className="topbar-logo">{isAdmin ? 'Admin Panel' : 'Partner Panel'}</div>
           </div>
-          <input
-            type="text"
-            placeholder="Search..."
-            className="topbar-search"
-            disabled
-          />
+          
           <div className="topbar-user">
             <span className="user-name">{resolvedName}</span>
             <div className="profile-menu-wrap" ref={profileMenuRef}>

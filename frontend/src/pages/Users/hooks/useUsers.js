@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { usersApi } from '../../../mocks/api/users.api'
-import { companiesApi } from '../../../mocks/api/companies.api'
+import { usersApi } from '../../../api/users.api'
+import { companiesApi } from '../../../api/companies.api'
 
 export const useUsers = (initialPageSize = 10) => {
   const [users, setUsers] = useState([])

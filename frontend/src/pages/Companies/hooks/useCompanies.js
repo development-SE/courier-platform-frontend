@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { companiesApi } from '../../../mocks/api/companies.api'
+import { companiesApi } from '../../../api/companies.api'
 
 export const useCompanies = (initialPageSize = 10) => {
   const [companies, setCompanies] = useState([])

@@ -19,6 +19,7 @@ export const UserModal = ({
         phone: user.phone || '',
         companyId: user.companyId || '',
         role: user.role || '',
+        password: '',
       }
     : {
         firstName: '',
@@ -27,6 +28,7 @@ export const UserModal = ({
         phone: '',
         companyId: '',
         role: '',
+        password: '',
       }
 
   const [formData, setFormData] = useState(initialFormData)
@@ -88,6 +90,12 @@ export const UserModal = ({
 
   const validateForm = () => {
     const newErrors = {}
+
+    if (isCreateMode && !formData.password.trim()) {
+      newErrors.password = 'Пароль обязателен'
+    } else if (isCreateMode && formData.password.length < 8) {
+      newErrors.password = 'Минимум 8 символов'
+    }
 
     if (!formData.firstName.trim()) {
       newErrors.firstName = 'Имя обязательно'
@@ -233,6 +241,21 @@ export const UserModal = ({
             />
             {errors.email && <span className="error-text">{errors.email}</span>}
           </div>
+                  {isCreateMode && (
+          <div className="form-group full-width">
+            <label htmlFor="password">Пароль</label>
+            <input
+              id="password"
+              type="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="Минимум 8 символов"
+              className={errors.password ? 'input-error' : ''}
+            />
+            {errors.password && <span className="error-text">{errors.password}</span>}
+          </div>
+        )}
 
           <div className="form-group full-width">
             <label htmlFor="companyId">Компания</label>
