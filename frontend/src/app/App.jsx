@@ -9,6 +9,7 @@ import { OrderCreatePage } from '../pages/Orders/OrderCreatePage'
 import { OrderDetailsPage } from '../pages/Orders/OrderDetailsPage'
 import { SignInPage } from '../pages/Auth/SignInPage'
 import { SignUpPage } from '../pages/Auth/SignUpPage'
+import { UserHomePage } from '../pages/UserHome/UserHomePage'
 import { auth } from '../utils/auth'
 import './App.css'
 
@@ -27,34 +28,19 @@ const RequireAuth = ({ children, allowedRoles = [] }) => {
   return children
 }
 
-const GuestOnly = ({ children }) => {
-  const session = auth.getSession()
-  if (session) {
-    return <Navigate to={auth.getDefaultRoute(session)} replace />
-  }
-
-  return children
-}
-
 function App() {
   return (
     <Router>
       <Routes>
+        <Route path="/" element={<UserHomePage />} />
+
         <Route
           path="/sign-in"
-          element={
-            <GuestOnly>
-              <SignInPage />
-            </GuestOnly>
-          }
+          element={<SignInPage />}
         />
         <Route
           path="/sign-up"
-          element={
-            <GuestOnly>
-              <SignUpPage />
-            </GuestOnly>
-          }
+          element={<SignUpPage />}
         />
 
         <Route
@@ -66,6 +52,14 @@ function App() {
               </PartnerLayout>
             </RequireAuth>
           }
+        />
+        <Route
+          path="/user-home"
+          element={(
+            <RequireAuth allowedRoles={['USER']}>
+              <UserHomePage />
+            </RequireAuth>
+          )}
         />
         <Route
           path="/orders"
@@ -138,10 +132,7 @@ function App() {
           }
         />
 
-        <Route
-          path="/"
-          element={<Navigate to={auth.getDefaultRoute()} replace />}
-        />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   )

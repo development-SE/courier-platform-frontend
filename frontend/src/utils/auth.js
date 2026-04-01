@@ -1,4 +1,3 @@
-﻿// utils/auth.js
 import { api } from './api'
 
 const SESSION_KEY = 'auth_session'
@@ -22,14 +21,22 @@ export const auth = {
   },
 
   getDefaultRoute(session = null) {
-    const s = session || this.getSession()
-    if (!s) return '/sign-in'
-    switch (s.role) {
+    const activeSession = session || this.getSession()
+    if (!activeSession) return '/sign-in'
+
+    switch (activeSession.role) {
       case 'ADMIN':
-      case 'SUPER_ADMIN': return '/orders'
+      case 'SUPER_ADMIN':
+        return '/orders'
       case 'DIRECTOR':
-      case 'MANAGER': return '/my-company'
-      default: return '/my-company'
+      case 'MANAGER':
+      case 'PARTNER':
+        return '/my-company'
+      case 'USER':
+      case 'CLIENT':
+        return '/user-home'
+      default:
+        return '/my-company'
     }
   },
 

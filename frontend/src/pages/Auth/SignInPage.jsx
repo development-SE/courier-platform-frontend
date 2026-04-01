@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { auth } from '../../utils/auth'
 import authImageUrl from '../../assets/Auth.png'
@@ -37,49 +37,66 @@ export const SignInPage = () => {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="auth-visual">
-          <div className="auth-visual-surface" style={{ backgroundImage: `url(${authImageUrl})` }}>
-            <div className="auth-visual-title">Hey There!</div>
-            <div className="auth-visual-center">
-              <div>Welcome Back.</div>
-              <div>You are just one step away to your feed.</div>
-            </div>
-            <div className="auth-visual-footer">
-              <span>Do not have an account?</span>
-              <Link to="/sign-up" className="auth-visual-link">Sign up</Link>
+        <section className="auth-visual-panel" style={{ backgroundImage: `url(${authImageUrl})` }}>
+          <div className="auth-visual-overlay">
+            <h2>Welcome !</h2>
+            <p>Log in to track, send and receive orders in one place.</p>
+            <div className="auth-visual-switch">
+              <span>Don&apos;t have an account?</span>
+              <Link to="/sign-up">Sign up</Link>
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className="auth-form-wrap">
-          <h1>SIGN IN</h1>
-          <form className="auth-form" onSubmit={handleSubmit}>
-            <input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={event => setEmail(event.target.value)}
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={event => setPassword(event.target.value)}
-            />
-            <div className="auth-form-meta">
-              <label><input type="checkbox" /> Keep me logged in</label>
-              <button type="button" className="link-muted">Forgot Password?</button>
+        <section className="auth-form-wrap">
+          <div className="auth-form-panel">
+            <h1>Welcome!</h1>
+
+            <div className="auth-tab-row">
+              <button type="button" className="auth-tab active">Mail</button>
+              <button type="button" className="auth-tab">Phone number</button>
             </div>
-            {error && <div className="auth-error">{error}</div>}
-            <button type="submit" disabled={loading}>{loading ? 'Signing in...' : 'Sign in'}</button>
-            <div className="auth-error" style={{ color: '#64748b' }}>
-              Admin: admin@example.com / 123456
+
+            <form className="auth-form" onSubmit={handleSubmit}>
+              <input
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={event => setEmail(event.target.value)}
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={event => setPassword(event.target.value)}
+              />
+
+              <div className="auth-form-meta">
+                <button type="button" className="link-muted">Forgot password?</button>
+              </div>
+
+              {error && <div className="auth-error">{error}</div>}
+
+              <button type="submit" disabled={loading}>
+                {loading ? 'Signing in...' : 'Log in'}
+              </button>
+            </form>
+
+            <div className="auth-or">OR</div>
+
+            <div className="auth-socials">
+              <button type="button">Continue with Google</button>
+              <button type="button">Continue with Facebook</button>
+              <button type="button">Continue with Apple</button>
             </div>
-            <div className="auth-error" style={{ color: '#64748b' }}>
-              Partner: partner@example.com / 123456
+
+            <div className="auth-demo-accounts">
+              <div>Admin: admin@example.com / 123456</div>
+              <div>Partner: partner@example.com / 123456</div>
+              <div>User: user@example.com / 123456</div>
             </div>
-          </form>
-        </div>
+          </div>
+        </section>
       </div>
     </div>
   )

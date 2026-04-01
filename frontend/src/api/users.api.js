@@ -6,6 +6,7 @@ export const usersApi = {
     const token = auth.getToken()
     const params = new URLSearchParams()
     if (search) params.append('search', search)
+    if (role) params.append('role', role)
     if (companyId) params.append('companyId', companyId)
     params.append('page', page)
     params.append('pageSize', pageSize)
