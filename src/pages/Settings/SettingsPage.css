@@ -1,0 +1,25 @@
+﻿.settings-page {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-group {
+  padding: 14px;
+}
+
+.settings-group h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.settings-row {
+  height: 44px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings-group p {
+  margin: 0;
+}

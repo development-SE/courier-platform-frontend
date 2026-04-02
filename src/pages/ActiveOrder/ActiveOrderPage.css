@@ -1,0 +1,71 @@
+﻿.active-order-page {
+  display: grid;
+  gap: 12px;
+}
+
+.active-order-page__map {
+  overflow: hidden;
+  padding: 0;
+  height: 260px;
+}
+
+.active-order-page__details {
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.active-order-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.active-order-page__addresses {
+  display: grid;
+  gap: 8px;
+}
+
+.active-order-page__addresses p {
+  margin: 0;
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 14px;
+}
+
+.active-order-page__meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.status-stepper {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.status-stepper__item {
+  flex: 1;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.status-stepper__item span {
+  display: block;
+  width: 100%;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  margin-bottom: 5px;
+}
+
+.status-stepper__item--done span {
+  background: var(--primary);
+}
+
+.status-stepper__item small {
+  font-size: 11px;
+}

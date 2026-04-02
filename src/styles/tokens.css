@@ -1,0 +1,71 @@
+﻿:root {
+  --brand: #cd5e3d;
+  --brand-hover: #b84e2f;
+  --brand-dim: rgba(205, 94, 61, 0.14);
+  --brand-glow: rgba(205, 94, 61, 0.24);
+
+  --bg-base: #0b0b0f;
+  --bg-surface: #14141b;
+  --bg-elevated: #1d1d26;
+  --bg-overlay: #26262f;
+  --bg-scrim: rgba(0, 0, 0, 0.7);
+
+  --border-faint: rgba(255, 255, 255, 0.04);
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-default: rgba(255, 255, 255, 0.11);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  --text-primary: #eeeef3;
+  --text-secondary: #7b7b96;
+  --text-muted: #3c3c52;
+  --text-inverse: #0b0b0f;
+
+  --success: #34d399;
+  --success-dim: rgba(52, 211, 153, 0.12);
+  --success-text: #6fecbe;
+
+  --warning: #fbbf24;
+  --warning-dim: rgba(251, 191, 36, 0.12);
+  --warning-text: #fcd34d;
+
+  --error: #f87171;
+  --error-dim: rgba(248, 113, 113, 0.12);
+  --error-text: #fca5a5;
+
+  --info: #60a5fa;
+  --info-dim: rgba(96, 165, 250, 0.12);
+
+  --font: 'Inter', 'SF Pro Text', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 17px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-full: 9999px;
+
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.55);
+  --shadow-brand: 0 4px 18px rgba(205, 94, 61, 0.3);
+
+  --nav-height: 64px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-fast: 0.14s;
+}

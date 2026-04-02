@@ -1,0 +1,71 @@
+.slots-page {}
+
+.slots-page__subtitle {
+  padding: 0 var(--sp-4) var(--sp-4);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-top: calc(-1 * var(--sp-2));
+}
+
+/* ── Group ───────────────────────────────────────────────── */
+.slots-group {
+  padding: 0 var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+
+.slots-group__date {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: capitalize;
+  margin-bottom: var(--sp-2);
+}
+
+.slots-group__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* ── Slot card ───────────────────────────────────────────── */
+.slot-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  padding: var(--sp-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  position: relative;
+  transition: border-color var(--t-fast);
+}
+
+.slot-card--booked {
+  border-color: rgba(52,211,153,0.25);
+  background: rgba(52,211,153,0.04);
+}
+
+.slot-card--closed {
+  opacity: 0.45;
+}
+
+.slot-card__lock {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  color: var(--text-muted);
+}
+
+.slot-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.slot-card__time {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+}

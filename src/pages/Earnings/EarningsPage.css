@@ -1,0 +1,94 @@
+﻿.earnings-page {
+  display: grid;
+  gap: 12px;
+}
+
+.earnings-summary,
+.earnings-metrics,
+.earnings-chart,
+.earnings-breakdown,
+.earnings-transactions {
+  padding: 14px;
+}
+
+.earnings-summary h2 {
+  margin: 4px 0 10px;
+  font-size: 28px;
+}
+
+.earnings-progress {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: #efe9e4;
+  overflow: hidden;
+}
+
+.earnings-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+
+.earnings-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.earnings-metrics p {
+  margin: 0 0 4px;
+}
+
+.earnings-chart .bars {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  height: 110px;
+}
+
+.bar-item {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  gap: 6px;
+}
+
+.bar-track {
+  width: 100%;
+  border-radius: 10px;
+  background: #f3eee9;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  overflow: hidden;
+}
+
+.bar-track span {
+  width: 100%;
+  background: var(--primary);
+  border-radius: 10px;
+}
+
+.breakdown-row,
+.tx-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.breakdown-row:first-of-type,
+.tx-row:first-of-type {
+  margin-top: 8px;
+}
+
+.tx-row p {
+  margin: 0 0 3px;
+}
+
+.negative { color: var(--error); }
+.positive { color: var(--success); }
