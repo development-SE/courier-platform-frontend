@@ -1,0 +1,62 @@
+﻿.shifts-page {
+  display: grid;
+  gap: 12px;
+}
+
+.shifts-next-card,
+.shifts-week-card,
+.shifts-history-card {
+  padding: 14px;
+}
+
+.shifts-next-card h2 {
+  margin: 4px 0;
+  font-size: 22px;
+}
+
+.shifts-next-card p { margin: 0; }
+
+.shifts-week-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.shift-list {
+  display: grid;
+  gap: 10px;
+}
+
+.shift-item {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+.shift-item p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.shift-item--disabled {
+  opacity: 0.55;
+}
+
+.history-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.history-item:first-of-type {
+  margin-top: 8px;
+}
