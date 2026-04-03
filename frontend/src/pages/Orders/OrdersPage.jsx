@@ -1,27 +1,33 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ordersApi } from '../../mocks/api/orders.api'
+import { ordersApi } from '../../api/ordersApi'
 import { Pagination } from '../../components/common/Pagination'
 import './ordersPage.css'
 
 const STATUS_LABELS = {
-  New: 'New',
-  Created: 'Created',
-  Assigned: 'Assigned',
-  InProgress: 'In Progress',
-  Processing: 'Processing',
-  Delivered: 'Delivered',
-  Failed: 'Failed',
+  New:        'New',
+  Accepted:   'Accepted',
+  Preparing:  'Preparing',
+  Ready:      'Ready',
+  Assigned:   'Assigned',
+  PickedUp:   'Picked Up',
+  InTransit:  'In Transit',
+  Delivered:  'Delivered',
+  Cancelled:  'Cancelled',
+  Rejected:   'Rejected',
 }
 
 const STATUS_CLASS = {
-  New: 'status-new',
-  Created: 'status-created',
-  Assigned: 'status-assigned',
-  InProgress: 'status-in-progress',
-  Processing: 'status-processing',
-  Delivered: 'status-delivered',
-  Failed: 'status-failed',
+  New:        'status-new',
+  Accepted:   'status-accepted',
+  Preparing:  'status-processing',
+  Ready:      'status-processing',
+  Assigned:   'status-assigned',
+  PickedUp:   'status-in-progress',
+  InTransit:  'status-in-progress',
+  Delivered:  'status-delivered',
+  Cancelled:  'status-failed',
+  Rejected:   'status-failed',
 }
 
 const formatDate = (value) => {
@@ -176,15 +182,6 @@ export const OrdersPage = () => {
             }}
             className="orders-date"
           />
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(event) => {
-              setPage(1)
-              setDateTo(event.target.value)
-            }}
-            className="orders-date"
-          />
         </div>
 
         <div className="orders-toolbar-right">
@@ -204,8 +201,9 @@ export const OrdersPage = () => {
             + Создать
           </button>
         </div>
+        
       </div>
-
+      
       <div className="orders-table-wrapper">
         <table className="orders-table">
           <thead>

@@ -7,12 +7,12 @@ import { OrderCreatePage } from '../pages/Orders/OrderCreatePage'
 import { OrderDetailsPage } from '../pages/Orders/OrderDetailsPage'
 import { SignInPage } from '../pages/Auth/SignInPage'
 import { SignUpPage } from '../pages/Auth/SignUpPage'
-import { UserHomePage } from '../pages/UserHome/UserHomePage'
+import { HomePage } from '../pages/Home/HomePage'
 
 export const routes = [
   {
     path: '/',
-    element: <UserHomePage />,
+    element: <HomePage />,
     label: 'User Home',
   },
   {
@@ -31,19 +31,9 @@ export const routes = [
     label: 'My Company',
   },
   {
-    path: '/user-home',
-    element: <UserHomePage />,
-    label: 'User Home',
-  },
-  {
     path: '/orders',
     element: <OrdersPage />,
     label: 'Orders',
-  },
-  {
-    path: '/orders/new',
-    element: <OrderCreatePage />,
-    label: 'New Order',
   },
   {
     path: '/orders/details',

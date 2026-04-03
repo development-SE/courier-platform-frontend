@@ -1,6 +1,6 @@
-﻿import { useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { storage } from '../../utils/storage'
+import { ordersApi } from '../../api/ordersApi'
 import './orderDetailsPage.css'
 
 const STATUS_STEPS = [
@@ -46,10 +46,16 @@ export const OrderDetailsPage = () => {
   const { orderId } = useParams()
   const [manualAssigned, setManualAssigned] = useState(false)
 
-  const order = useMemo(() => {
-    const orders = storage.getOrders()
-    if (!orderId) return orders[0] || null
-    return orders.find(item => item.id === orderId) || null
+  const [order, setOrder] = useState(null)
+  const [detailsLoading, setDetailsLoading] = useState(true)
+
+  useEffect(() => {
+    if (!orderId) return
+    setDetailsLoading(true)
+    ordersApi.getById(orderId)
+      .then(data => setOrder(data))
+      .catch(() => setOrder(null))
+      .finally(() => setDetailsLoading(false))
   }, [orderId])
 
   const assigned = useMemo(() => {
@@ -108,11 +114,11 @@ export const OrderDetailsPage = () => {
           <h3>Recipient Info</h3>
           <div className="info-row">
             <span>Full Name</span>
-            <strong>{order.recipientName || '—'}</strong>
+            <strong>{order.recipientInfo?.name  || '—'}</strong>
           </div>
           <div className="info-row">
             <span>Phone</span>
-            <strong>{order.recipientPhone || '—'}</strong>
+            <strong>{order.recipientInfo?.phone   || '—'}</strong>
           </div>
           <div className="info-row">
             <span>Email</span>
@@ -120,7 +126,7 @@ export const OrderDetailsPage = () => {
           </div>
           <div className="info-row">
             <span>Notes</span>
-            <strong>{order.comments || 'No notes'}</strong>
+            <strong>{order.comment || 'No notes'}</strong>
           </div>
         </div>
 
@@ -188,7 +194,7 @@ export const OrderDetailsPage = () => {
             <div className="route-dot pickup" />
             <div>
               <div className="route-label">Pickup Address</div>
-              <div className="route-value">{buildAddress(order.pickupStreet, order.pickupHouse)}</div>
+              <div className="route-value">{buildAddress(order.pickupAddress?.street, order.pickupAddress?.house)}</div>
             </div>
           </div>
           <div className="route-line" />
@@ -197,7 +203,7 @@ export const OrderDetailsPage = () => {
             <div>
               <div className="route-label">Dropoff Address</div>
               <div className="route-value">
-                {buildAddress(order.dropoffStreet, order.dropoffHouse, order.dropoffApartment, order.dropoffEntrance)}
+              {buildAddress(order.deliveryAddress?.street, order.deliveryAddress?.house, order.deliveryAddress?.apartment, order.deliveryAddress?.entrance)}
               </div>
             </div>
           </div>

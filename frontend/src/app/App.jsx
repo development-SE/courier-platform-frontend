@@ -9,7 +9,7 @@ import { OrderCreatePage } from '../pages/Orders/OrderCreatePage'
 import { OrderDetailsPage } from '../pages/Orders/OrderDetailsPage'
 import { SignInPage } from '../pages/Auth/SignInPage'
 import { SignUpPage } from '../pages/Auth/SignUpPage'
-import { UserHomePage } from '../pages/UserHome/UserHomePage'
+import { HomePage } from '../pages/Home/HomePage'
 import { auth } from '../utils/auth'
 import './App.css'
 
@@ -32,7 +32,16 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<UserHomePage />} />
+        <Route
+          path="/"
+          element={
+            <RequireAuth allowedRoles={['ADMIN', 'PARTNER']}>
+              <PartnerLayout currentPage="home">
+                <HomePage />
+              </PartnerLayout>
+            </RequireAuth>
+          }
+        />
 
         <Route
           path="/sign-in"
@@ -52,14 +61,6 @@ function App() {
               </PartnerLayout>
             </RequireAuth>
           }
-        />
-        <Route
-          path="/user-home"
-          element={(
-            <RequireAuth allowedRoles={['USER']}>
-              <UserHomePage />
-            </RequireAuth>
-          )}
         />
         <Route
           path="/orders"

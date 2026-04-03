@@ -1,7 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { addressesApi } from '../../../mocks/api/addresses.api'
-import { ordersApi } from '../../../mocks/api/orders.api'
+import { ordersApi } from '../../../api/ordersApi'
 import {
   formatPhone,
   isValidDateTime,
@@ -120,29 +119,48 @@ export const useOrderCreateForm = () => {
   }
 
   const handleSave = async (assign = false) => {
-    if (!validate()) return
-    setLoading(true)
-    setSuccessMessage('')
+  if (!validate()) return
+  setLoading(true)
+  setSuccessMessage('')
 
-    try {
-      const selectedPickupPoint = pickupPoints.find(point => point.id === formData.pickupPoint)
+  try {
+    const selectedPickupPoint = pickupPoints.find(point => point.id === formData.pickupPoint)
 
-      const order = await ordersApi.create({
-        ...formData,
-        pickupStreet: selectedPickupPoint?.street || '',
-        pickupHouse: selectedPickupPoint?.house || '',
-        courierName: '',
-        status: assign ? 'Assigned' : 'Created',
-      })
+    // Split recipientName into name + surname
+    const nameParts = formData.recipientName.trim().split(' ')
+    const recipientFirstName = nameParts[0] || ''
+    const recipientSurname = nameParts.slice(1).join(' ') || undefined
 
-      setSuccessMessage(`Заказ создан: ${order.orderNumber}`)
-      resetForm()
-      navigate('/orders', { replace: true })
-    } finally {
-      setLoading(false)
+    const order = await ordersApi.create({
+      serviceType:       formData.serviceType,
+      comments:          formData.comments,
+      dropoffStreet:     formData.dropoffStreet,
+      dropoffHouse:      formData.dropoffHouse,
+      dropoffApartment:  formData.dropoffApartment || undefined,
+      dropoffEntrance:   formData.dropoffEntrance  || undefined,
+      recipientName:     recipientFirstName,
+      recipientSurname:  recipientSurname,
+      recipientPhone:    formData.recipientPhone,
+      pickupStreet:      selectedPickupPoint?.street || '',
+      pickupHouse:       selectedPickupPoint?.house  || '',
+      pickupContact:     formData.pickupContact      || 'Warehouse',
+      items: [{
+        itemId:   'ITEM-1',
+        name:     'Package',
+        quantity: 1,
+      }],
+    })
+
+    setSuccessMessage(`Заказ создан: ${order.id}`)
+    resetForm()
+    navigate('/orders', { replace: true })
+      } catch (err) {
+        setErrors({ submit: err.message || 'Ошибка при создании заказа' })
+      } finally {
+        setLoading(false)
+      }
     }
-  }
-
+    
   const handleCancel = () => navigate('/orders')
 
   return {
