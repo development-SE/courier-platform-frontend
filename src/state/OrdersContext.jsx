@@ -1,16 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { getOrdersSeed } from '../services/courierDataService'
-import { isActiveOrderStatus, normalizeOrders, ORDER_STATUS } from '../domain/orders/model'
+import { ORDER_STATUS } from '../domain/orders/model'
 import { getStorageItem, setStorageItem } from '../platform/storage'
-
-const ORDER_STAGES = {
-  WAITING: 'waiting',
-  TO_PICKUP: 'to_pickup',
-  ARRIVED_PICKUP: 'arrived_pickup',
-  TO_CUSTOMER: 'to_customer',
-}
-
-const ORDER_STAGE_VALUES = new Set(Object.values(ORDER_STAGES))
+import {
+  ORDER_STAGES,
+  getBootstrapOrdersState,
+  sanitizePersistedOrdersState,
+} from '@core/use-cases/orders/persistedState'
 const ORDERS_STATE_STORAGE_KEY = 'courier_orders_state_v1'
 
 const PAYMENT_LABEL = {
@@ -22,69 +18,11 @@ const PRIMARY_ORDER_ID = '250818-2007978'
 
 const OrdersContext = createContext(null)
 
-function getInitialOrders() {
-  return getOrdersSeed()
-}
-
-function getInitialActiveOrderId(orders) {
-  const activeOrder = orders.find(order => isActiveOrderStatus(order.status))
-  return activeOrder?.id ?? null
-}
-
-function getInitialStage(orders, activeOrderId) {
-  if (!activeOrderId) return ORDER_STAGES.WAITING
-  const activeOrder = orders.find(order => order.id === activeOrderId)
-  if (!activeOrder) return ORDER_STAGES.WAITING
-  return activeOrder.status === ORDER_STATUS.DELIVERY ? ORDER_STAGES.TO_CUSTOMER : ORDER_STAGES.TO_PICKUP
-}
-
-function getBootstrapState() {
-  const orders = getInitialOrders()
-  const activeOrderId = getInitialActiveOrderId(orders)
-  const orderStage = getInitialStage(orders, activeOrderId)
-  return { orders, activeOrderId, orderStage }
-}
-
-function resolveOrderStage(activeOrder, persistedStage) {
-  if (!activeOrder) return ORDER_STAGES.WAITING
-
-  if (activeOrder.status === ORDER_STATUS.DELIVERY) {
-    return ORDER_STAGES.TO_CUSTOMER
-  }
-
-  if (activeOrder.status === ORDER_STATUS.PICKUP) {
-    if (persistedStage === ORDER_STAGES.ARRIVED_PICKUP || persistedStage === ORDER_STAGES.TO_PICKUP) {
-      return persistedStage
-    }
-    return ORDER_STAGES.TO_PICKUP
-  }
-
-  return ORDER_STAGES.WAITING
-}
-
-function sanitizePersistedState(rawState) {
-  if (!rawState || typeof rawState !== 'object' || !Array.isArray(rawState.orders)) {
-    return null
-  }
-
-  const orders = normalizeOrders(rawState.orders)
-  const rawActiveOrderId = typeof rawState.activeOrderId === 'string' ? rawState.activeOrderId : null
-  const activeOrderId = rawActiveOrderId && orders.some(order => order.id === rawActiveOrderId)
-    ? rawActiveOrderId
-    : getInitialActiveOrderId(orders)
-
-  const activeOrder = orders.find(order => order.id === activeOrderId)
-  const persistedStage = ORDER_STAGE_VALUES.has(rawState.orderStage) ? rawState.orderStage : ORDER_STAGES.WAITING
-  const orderStage = resolveOrderStage(activeOrder, persistedStage)
-
-  return { orders, activeOrderId, orderStage }
-}
-
 function readPersistedState() {
   try {
     const raw = getStorageItem(ORDERS_STATE_STORAGE_KEY)
     if (!raw) return null
-    return sanitizePersistedState(JSON.parse(raw))
+    return sanitizePersistedOrdersState(JSON.parse(raw))
   } catch {
     return null
   }
@@ -115,7 +53,7 @@ function normalizeActiveOrder(order) {
   }
 }
 
-const INITIAL_STATE = readPersistedState() ?? getBootstrapState()
+const INITIAL_STATE = readPersistedState() ?? getBootstrapOrdersState(getOrdersSeed())
 
 export function OrdersProvider({ children }) {
   const [orders, setOrders] = useState(INITIAL_STATE.orders)

@@ -2,6 +2,13 @@ node_modules
 node_modules/
 dist/
 .vite/
+.expo/
+.expo-shared/
+android/.gradle/
+android/app/build/
+android/build/
+ios/Pods/
+ios/build/
 
 # Local environment files
 .env
@@ -19,4 +26,3 @@ pnpm-debug.log*
 Thumbs.db
 .idea/
 .vscode/
-

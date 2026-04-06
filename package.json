@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite --port 5174",
     "build": "vite build",
-    "preview": "vite preview --port 5174"
+    "preview": "vite preview --port 5174",
+    "native:start": "npm --prefix apps/courier-native start",
+    "native:android": "npm --prefix apps/courier-native android",
+    "native:ios": "npm --prefix apps/courier-native ios",
+    "native:typecheck": "npm --prefix apps/courier-native run typecheck"
   },
   "dependencies": {
     "lucide-react": "^0.511.0",
