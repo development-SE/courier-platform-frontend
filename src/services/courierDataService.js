@@ -7,40 +7,44 @@ import {
   MESSAGES,
   COURIER_POSITION,
 } from '../mock/courier'
-import { normalizeOrders } from '../domain/orders/model'
-import { normalizeMessages } from '../domain/messages/model'
-import { normalizeCourierProfile } from '../domain/profile/model'
-import { normalizeBalance } from '../domain/balance/model'
-import { normalizeSlots } from '../domain/slots/model'
+import { createCourierDataUseCases } from '@core/use-cases/courier-data/snapshots'
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value))
-}
+const courierDataUseCases = createCourierDataUseCases({
+  repository: {
+    getCourierProfile: () => COURIER,
+    getBalanceSnapshot: () => BALANCE,
+    getIncomingOrderPreview: () => INCOMING_ORDER,
+    getSlotsSnapshot: () => SLOTS,
+    getMessagesSnapshot: () => MESSAGES,
+    getCourierPosition: () => COURIER_POSITION,
+    getOrdersSeed: () => ORDERS,
+  },
+})
 
 export function getCourierProfile() {
-  return normalizeCourierProfile(clone(COURIER))
+  return courierDataUseCases.getCourierProfile()
 }
 
 export function getBalanceSnapshot() {
-  return normalizeBalance(clone(BALANCE))
+  return courierDataUseCases.getBalanceSnapshot()
 }
 
 export function getIncomingOrderPreview() {
-  return INCOMING_ORDER
+  return courierDataUseCases.getIncomingOrderPreview()
 }
 
 export function getSlotsSnapshot() {
-  return normalizeSlots(clone(SLOTS))
+  return courierDataUseCases.getSlotsSnapshot()
 }
 
 export function getMessagesSnapshot() {
-  return normalizeMessages(clone(MESSAGES))
+  return courierDataUseCases.getMessagesSnapshot()
 }
 
 export function getCourierPosition() {
-  return [...COURIER_POSITION]
+  return courierDataUseCases.getCourierPosition()
 }
 
 export function getOrdersSeed() {
-  return normalizeOrders(clone(ORDERS))
+  return courierDataUseCases.getOrdersSeed()
 }

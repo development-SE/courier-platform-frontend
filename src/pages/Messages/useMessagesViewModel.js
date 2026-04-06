@@ -1,18 +1,11 @@
 import { useMemo } from 'react'
 import { getMessagesSnapshot } from '../../services/courierDataService'
-import { countUnreadMessages, groupMessagesByDate } from '../../domain/messages/model'
+import { buildMessagesView } from '@core/use-cases/messages/buildMessagesView'
 
 export function useMessagesViewModel() {
-  const messages = useMemo(() => getMessagesSnapshot(), [])
-
-  const unreadCount = useMemo(
-    () => countUnreadMessages(messages),
-    [messages],
-  )
-
-  const groupedMessages = useMemo(
-    () => groupMessagesByDate(messages),
-    [messages],
+  const { messages, unreadCount, groupedMessages } = useMemo(
+    () => buildMessagesView(getMessagesSnapshot()),
+    [],
   )
 
   return {
