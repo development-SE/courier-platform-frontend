@@ -3,12 +3,10 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   Platform, TextInput, ScrollView,
   ActivityIndicator, Alert, Animated, Dimensions,
-  KeyboardAvoidingView, PanResponder,
+  KeyboardAvoidingView,
 } from 'react-native'
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import * as Location from 'expo-location'
-import { ordersApi } from '../../api/orders.api'
 
 const { height: SCREEN_H } = Dimensions.get('window')
 
@@ -56,36 +54,6 @@ export const HomeScreen = ({ navigation }) => {
 
   // ── Sheet animation
   const sheetY = useRef(new Animated.Value(400)).current
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (evt, { dy }) => Math.abs(dy) > 5,
-      onPanResponderMove: (evt, { dy }) => {
-        if (dy > 0) {
-          sheetY.setValue(dy)
-        }
-      },
-      onPanResponderRelease: (evt, { dy, vy }) => {
-        if (dy > 100 || vy > 0.5) {
-          // Swipe down - hide the sheet
-          Animated.spring(sheetY, {
-            toValue: 400,
-            tension: 50,
-            friction: 9,
-            useNativeDriver: true,
-          }).start()
-        } else {
-          // Snap back up
-          Animated.spring(sheetY, {
-            toValue: 0,
-            tension: 50,
-            friction: 9,
-            useNativeDriver: true,
-          }).start()
-        }
-      },
-    })
-  ).current
 
   const showSheet = () =>
     Animated.spring(sheetY, { toValue: 0, tension: 50, friction: 9, useNativeDriver: true }).start()
@@ -210,64 +178,13 @@ export const HomeScreen = ({ navigation }) => {
   }
 
   // ── Submit
-  const handleOrder = async () => {
-    if (!destCoords) {
-      Alert.alert('Укажите пункт назначения', 'Нажмите на иконку 📍 рядом с полем "Куда"')
-      return
-    }
-    setLoading(true)
-    try {
-      const result = await ordersApi.create({
-  pickupAddress:       myAddress,
-  pickupLat:           myCoords?.latitude,
-  pickupLon:           myCoords?.longitude,
-  pickupContactName:   'Отправитель',
-  pickupContactPhone:  '+70000000000',
-  deliveryAddress:     destAddress,
-  deliveryLat:         destCoords?.latitude,
-  deliveryLon:         destCoords?.longitude,
-  recipientName:       'Получатель',
-  recipientPhone:      '+70000000000',
-  serviceType:         transport.id,
-  comment:             comment,
-  packageDescription:  '',
-})
-      
-      // Cache the order with coordinates locally for tracking screen
-      const orderId = result.data?.orderId
-      if (orderId) {
-        const orderWithCoords = {
-          orderId,
-          pickupLat: myCoords?.latitude,
-          pickupLon: myCoords?.longitude,
-          deliveryLat: destCoords?.latitude,
-          deliveryLon: destCoords?.longitude,
-        }
-        await AsyncStorage.setItem(`order_${orderId}`, JSON.stringify(orderWithCoords))
-      }
-      
-      Alert.alert('Заказ создан! 🎉', 'Курьер будет назначен в ближайшее время', [
-        { text: 'Мои заказы', onPress: () => navigation.navigate('OrdersTab') },
-        { text: 'OK' },
-      ])
-      setDestCoords(null)
-      setDestAddress('')
-      setComment('')
-    } catch (err) {
-    console.log('ERROR RESPONSE:', JSON.stringify(err?.response?.data, null, 2))
-    console.log('ERROR STATUS:', err?.response?.status)
-    const data = err?.response?.data
-    const msg = typeof data === 'string'
-        ? data
-        : data?.message
-        || data?.error
-        || data?.detail
-        || err?.message
-        || 'Unknown error'
-    Alert.alert('Ошибка', String(msg))
-    } finally {
-      setLoading(false)
-    }
+  const handleOrder = () => {
+    navigation.navigate('CreateOrder', {
+      pickupAddress: myAddress,
+      destAddress,
+      comment,
+      transportType: transport.id,
+    })
   }
 
   const initialRegion = {
@@ -383,7 +300,6 @@ export const HomeScreen = ({ navigation }) => {
       {!pickingDest && !pickingPickup && (
         <Animated.View
           style={[s.sheet, { transform: [{ translateY: sheetY }] }]}
-          {...panResponder.panHandlers}
         >
           <View style={s.handle} />
 
@@ -467,15 +383,7 @@ export const HomeScreen = ({ navigation }) => {
               </ScrollView>
 
               {/* ── Comment ── */}
-              <Text style={s.sectionLabel}>Комментарий</Text>
-              <TextInput
-                style={s.commentInput}
-                value={comment}
-                onChangeText={setComment}
-                placeholder="Инструкции для курьера (необязательно)"
-                placeholderTextColor="#bbb"
-                multiline
-              />
+              
             </ScrollView>
           </KeyboardAvoidingView>
         </Animated.View>
@@ -485,38 +393,45 @@ export const HomeScreen = ({ navigation }) => {
           PRICE + ORDER (FIXED AT BOTTOM)
       ═════════════════════ */}
       {!pickingDest && !pickingPickup && (
-        <View style={s.fixedOrderRow}>
-          {/* Payment Method Button */}
-          <TouchableOpacity
-            style={s.paymentBtn}
-            onPress={() => setShowPayment(true)}
-          >
-            <Text style={s.paymentIcon}>💳</Text>
-            <Text style={s.paymentLabel}>{paymentMethod === 'CASH' ? 'Наличные' : 'Карта'}</Text>
-          </TouchableOpacity>
+      <View style={s.fixedOrderRow}>
+        
+        {/* Payment Method Button */}
+        <TouchableOpacity
+          style={s.paymentBtn}
+          onPress={() => setShowPayment(true)}
+        >
+          <Text style={s.paymentIcon}>💳</Text>
+          <Text style={s.paymentLabel}>
+            {paymentMethod === 'CASH' ? 'Карта' : 'Наличные'}
+          </Text>
+        </TouchableOpacity>
 
-          {/* Price */}
-          <View>
-            <Text style={s.priceLabel}>Стоимость</Text>
-            <Text style={s.priceValue}>
-              {destCoords ? `≈ ₸${price().toLocaleString()}` : `от ₸${transport.base.toLocaleString()}`}
-            </Text>
-          </View>
-
-          {/* Order Button */}
-          <TouchableOpacity
-            style={[s.orderBtn, loading && s.orderBtnDisabled]}
-            onPress={handleOrder}
-            disabled={loading}
-            activeOpacity={0.88}
-          >
-            {loading
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={s.orderBtnText}>Заказать</Text>
-            }
-          </TouchableOpacity>
+        {/* Price */}
+        <View>
+          <Text style={s.priceLabel}>Стоимость</Text>
+          <Text style={s.priceValue}>
+            {destCoords
+              ? `≈ ${price().toLocaleString()} ₸`
+              : `от ${transport.base.toLocaleString()} ₸`}
+          </Text>
         </View>
-      )}
+
+        {/* Order Button */}
+        <TouchableOpacity
+          style={[s.orderBtn, loading && s.orderBtnDisabled]}
+          onPress={handleOrder}
+          disabled={loading}
+          activeOpacity={0.88}
+        >
+          {loading
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={s.orderBtnText}>Заказать</Text>
+          }
+        </TouchableOpacity>
+
+      </View>
+    )
+    }
 
       {/* ═════════════════════
           PAYMENT METHOD MODAL
@@ -741,7 +656,7 @@ const s = StyleSheet.create({
 
   // ── Bottom sheet
   sheet: {
-    position: 'absolute', bottom: 80, left: 0, right: 0,
+    position: 'absolute', bottom: 60, left: 0, right: 0,
     backgroundColor: '#fff',
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
     paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12,
@@ -828,7 +743,7 @@ const s = StyleSheet.create({
   orderBtnDisabled: { opacity: 0.6 },
   orderBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 
-  // ── Payment
+  // ?? Payment
   paymentBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: '#f5f5f5', borderRadius: 12,
@@ -837,7 +752,6 @@ const s = StyleSheet.create({
   paymentIcon: { fontSize: 18 },
   paymentLabel: { fontSize: 12, fontWeight: '700', color: '#555' },
 
-  // ── Payment Modal
   paymentOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.4)',

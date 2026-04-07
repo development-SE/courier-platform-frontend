@@ -82,13 +82,12 @@ export const OrdersScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Мои заказы</Text>
-        <TouchableOpacity
-          style={styles.newBtn}
-          onPress={() => navigation.navigate('CreateOrder')}
-        >
-          <Text style={styles.newBtnText}>+ Новый</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Text style={styles.backText}>←</Text>
         </TouchableOpacity>
+        <Text style={styles.title}>Мои заказы</Text>
+        <View style={styles.headerSpacer} />
+        
       </View>
 
       {error && <Text style={styles.error}>{error}</Text>}
@@ -131,7 +130,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
+  backBtn: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backText: {
+    fontSize: 24,
+    color: '#FC3F1D',
+    fontWeight: '700',
+  },
   title: { fontSize: 22, fontWeight: '800', color: '#0d0d0d' },
+  headerSpacer: {
+    width: 40,
+    height: 40,
+  },
   newBtn: {
     backgroundColor: '#FC3F1D',
     borderRadius: 10,

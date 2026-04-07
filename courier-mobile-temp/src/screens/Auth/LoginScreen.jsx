@@ -25,7 +25,8 @@ export const LoginScreen = ({ navigation }) => {
         await authStore.saveSession(
           res.data.accessToken,
           res.data.refreshToken,
-          res.data.role
+          res.data.role,
+          email.trim()
         )
         navigation.reset({ index: 0, routes: [{ name: 'Main' }] })
       } else {
