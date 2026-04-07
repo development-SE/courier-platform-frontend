@@ -2,6 +2,7 @@
 import {
   ImageBackground,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,33 +15,65 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { SCREEN_IDS } from '../../constants/screenIds'
 import type { RootStackParamList } from '../../navigation/types'
 import { appTheme } from '../../theme/appTheme'
+import { useAuthStore } from '../../store/authStore'
 
 type Props = NativeStackScreenProps<RootStackParamList, typeof SCREEN_IDS.SIGN_UP>
 
 export function SignUpScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets()
   const { height: windowHeight } = useWindowDimensions()
+  const signUp = useAuthStore((s) => s.signUp)
 
-  const [name, setName] = useState('your name')
-  const [email, setEmail] = useState('example@gmail.com')
-  const [password, setPassword] = useState('123456')
-  const [confirmPassword, setConfirmPassword] = useState('123456')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const heroBaseHeight = Math.max(186, Math.min(228, Math.round(windowHeight * 0.275)))
+  const heroBaseHeight = Math.max(100, Math.min(140, Math.round(windowHeight * 0.16)))
   const heroHeight = heroBaseHeight + insets.top
   const panelBottom = Math.max(14, insets.bottom + 2)
+  const nameRegex = /^[a-zA-Zа-яА-Я\s-]{2,100}$/
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/
+  const emailRegex = /^[\w._%+-]+@[\w.-]+\.[A-Za-z]{2,}$/
 
-  const handleSignUp = () => {
+  const handleSignUp = async () => {
     setError('')
 
-    if (!name.trim() || !email.trim() || !password || !confirmPassword) {
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !password || !confirmPassword) {
       setError('Please fill in all fields.')
+      return
+    }
+
+    if (!emailRegex.test(email.trim())) {
+      setError('Invalid email format.')
+      return
+    }
+
+    if (!nameRegex.test(firstName.trim()) || !nameRegex.test(lastName.trim())) {
+      setError('Name must be 2-100 letters.')
+      return
+    }
+
+    if (!passwordRegex.test(password)) {
+      setError('Password must be 8+ chars with upper, lower, digit, special.')
       return
     }
 
     if (password !== confirmPassword) {
       setError('Passwords do not match.')
+      return
+    }
+
+    setLoading(true)
+    const result = await signUp({ email, password, firstName, lastName, phone: phone.trim() || undefined })
+    setLoading(false)
+
+    if (!result.ok) {
+      setError(result.message)
       return
     }
 
@@ -73,22 +106,47 @@ export function SignUpScreen({ navigation }: Props) {
             <View style={styles.headerSpacer} />
           </View>
 
-          <View style={styles.formBlock}>
-            <Text style={styles.label}>Name</Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="Enter your name"
-              placeholderTextColor="#c9c6c6"
-              style={styles.input}
-            />
+          <ScrollView style={styles.formBlock} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <View style={styles.nameRow}>
+              <View style={styles.nameField}>
+                <Text style={styles.label}>First Name</Text>
+                <TextInput
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  placeholder="First name"
+                  placeholderTextColor="#c9c6c6"
+                  style={styles.input}
+                />
+              </View>
+              <View style={styles.nameField}>
+                <Text style={styles.label}>Last Name</Text>
+                <TextInput
+                  value={lastName}
+                  onChangeText={setLastName}
+                  placeholder="Last name"
+                  placeholderTextColor="#c9c6c6"
+                  style={styles.input}
+                />
+              </View>
+            </View>
 
             <Text style={styles.label}>Email</Text>
             <TextInput
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
+              keyboardType="email-address"
               placeholder="example@gmail.com"
+              placeholderTextColor="#c9c6c6"
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>Phone</Text>
+            <TextInput
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              placeholder="+7 (___) ___-__-__"
               placeholderTextColor="#c9c6c6"
               style={styles.input}
             />
@@ -105,14 +163,10 @@ export function SignUpScreen({ navigation }: Props) {
             />
 
             <View style={styles.rulesBlock}>
-              <Text style={styles.rulesTitle}>Required</Text>
-              <Text style={styles.rulesText}>- The minimum password length is 6 characters.</Text>
-              <Text style={styles.rulesText}>- At least one lowercase letter (for example, a, b, c).</Text>
-              <Text style={styles.rulesText}>- At least one digit (for example, 1, 2, 3, 4, 5).</Text>
-              <Text style={styles.rulesText}>- At least one special character (for example, #, !, %, $).</Text>
+              <Text style={styles.rulesText}>Min 8 chars · uppercase · lowercase · digit · special (@$!%*?&)</Text>
             </View>
 
-            <Text style={styles.label}>Confirm password</Text>
+            <Text style={styles.label}>Confirm Password</Text>
             <TextInput
               value={confirmPassword}
               onChangeText={setConfirmPassword}
@@ -125,10 +179,10 @@ export function SignUpScreen({ navigation }: Props) {
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-            <Pressable onPress={handleSignUp} style={styles.signUpButton}>
-              <Text style={styles.signUpButtonText}>Sign Up</Text>
+            <Pressable onPress={handleSignUp} disabled={loading} style={styles.signUpButton}>
+              <Text style={styles.signUpButtonText}>{loading ? 'Signing Up...' : 'Sign Up'}</Text>
             </Pressable>
-          </View>
+          </ScrollView>
         </View>
       </View>
     </SafeAreaView>
@@ -159,8 +213,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     backgroundColor: '#4f4a4d',
-    paddingTop: 14,
-    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingHorizontal: 14,
   },
   headerRow: {
     flexDirection: 'row',
@@ -186,43 +240,43 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#ffffff',
-    fontSize: 36,
-    lineHeight: 40,
+    fontSize: 34,
+    lineHeight: 38,
     fontWeight: '700',
-    marginBottom: 5,
+    marginBottom: 4,
   },
   subtitle: {
     color: '#cdc9c9',
-    fontSize: 11,
+    fontSize: 10,
     textAlign: 'center',
-    lineHeight: 14,
+    lineHeight: 13,
   },
   formBlock: {
-    marginTop: 8,
+    marginTop: 6,
     paddingHorizontal: 4,
   },
   label: {
     color: '#c9c5c5',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 3,
     marginLeft: 6,
   },
   input: {
-    height: 50,
+    height: 46,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#b4b1b2',
     color: '#acabab',
     paddingHorizontal: 12,
-    marginBottom: 10,
+    marginBottom: 8,
     backgroundColor: '#4f4a4d',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '400',
   },
   rulesBlock: {
     marginTop: -3,
-    marginBottom: 8,
+    marginBottom: 6,
     paddingLeft: 2,
   },
   rulesTitle: {
@@ -251,7 +305,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: appTheme.colors.primary,
-    marginTop: 20,
+    marginTop: 12,
   },
   signUpButtonText: {
     color: '#ffffff',
