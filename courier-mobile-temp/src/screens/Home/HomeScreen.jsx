@@ -600,12 +600,13 @@ const s = StyleSheet.create({
   myLocBtn: {
     position: 'absolute',
     right: 16,
-    bottom: 310,
+    bottom: 430,
     width: 46, height: 46, borderRadius: 23,
     backgroundColor: '#fff',
     justifyContent: 'center', alignItems: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15, shadowRadius: 6, elevation: 5,
+    shadowOpacity: 0.15, shadowRadius: 6, elevation: 12,
+    zIndex: 20,
   },
   myLocIcon: { fontSize: 22 },
 
