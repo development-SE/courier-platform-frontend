@@ -35,6 +35,14 @@ export const ProfileScreen = ({ navigation }) => {
     ])
   }
 
+  const menuItems = [
+    { icon: '📦', label: 'Мои заказы', onPress: () => navigation.navigate('OrdersTab') },
+    { icon: '👤', label: 'Личные данные', onPress: () => navigation.navigate('PersonalInfo') },
+    { icon: '📍', label: 'Мои адреса', onPress: () => navigation.navigate('SavedAddresses') },
+    { icon: '⚙️', label: 'Настройки', onPress: () => navigation.navigate('Settings') },
+    { icon: '💬', label: 'Поддержка', onPress: () => navigation.navigate('Support') },
+  ]
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -56,9 +64,7 @@ export const ProfileScreen = ({ navigation }) => {
       </View>
 
       <View style={styles.menu}>
-        {[
-          { icon: '📦', label: 'Мои заказы', onPress: () => navigation.navigate('OrdersTab') },
-        ].map((item, i) => (
+        {menuItems.map((item, i) => (
           <TouchableOpacity
             key={i}
             style={styles.menuItem}
@@ -157,6 +163,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
   },
   menuIcon: { fontSize: 20, width: 28 },
   menuLabel: { flex: 1, fontSize: 15, color: '#0d0d0d', fontWeight: '500' },

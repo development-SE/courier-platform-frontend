@@ -12,6 +12,8 @@ import {
   Animated,
   Dimensions,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as Location from 'expo-location'
 import { ordersApi } from '../../api/orders.api'
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window')
@@ -69,6 +71,33 @@ export const CreateOrderScreen = ({ navigation, route }) => {
 
   const estimatedPrice = () => transport.basePrice
 
+  const geocodeOrderAddress = async (street) => {
+    const normalizedStreet = street?.trim()
+    if (!normalizedStreet) return null
+
+    const queries = [
+      `${normalizedStreet}, Астана, Kazakhstan`,
+      `${normalizedStreet}, Astana, Kazakhstan`,
+      normalizedStreet,
+    ]
+
+    for (const query of queries) {
+      try {
+        const results = await Location.geocodeAsync(query)
+        if (results?.[0]) {
+          return {
+            latitude: results[0].latitude,
+            longitude: results[0].longitude,
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to geocode address:', query, err)
+      }
+    }
+
+    return null
+  }
+
   const handleSubmit = async () => {
     if (!pickupAddress.trim() || !destAddress.trim()) {
       Alert.alert('Ошибка', 'Укажите адрес отправления и адрес доставки')
@@ -83,11 +112,23 @@ export const CreateOrderScreen = ({ navigation, route }) => {
     setLoading(true)
 
     try {
-      await ordersApi.create({
-        pickupAddress: pickupAddress.trim(),
+      const pickupStreet = pickupAddress.trim()
+      const deliveryStreet = destAddress.trim()
+
+      const [pickupCoords, deliveryCoords] = await Promise.all([
+        geocodeOrderAddress(pickupStreet),
+        geocodeOrderAddress(deliveryStreet),
+      ])
+
+      const createdOrder = await ordersApi.create({
+        pickupAddress: pickupStreet,
+        pickupLat: pickupCoords?.latitude,
+        pickupLon: pickupCoords?.longitude,
         pickupContactName: pickupContactName.trim(),
         pickupContactPhone: pickupContactPhone.trim(),
-        deliveryAddress: destAddress.trim(),
+        deliveryAddress: deliveryStreet,
+        deliveryLat: deliveryCoords?.latitude,
+        deliveryLon: deliveryCoords?.longitude,
         recipientName: recipientName.trim(),
         recipientPhone: recipientPhone.trim(),
         packageDescription: packageDesc.trim(),
@@ -95,10 +136,25 @@ export const CreateOrderScreen = ({ navigation, route }) => {
         serviceType: transport.id,
       })
 
+      const createdOrderId =
+        createdOrder?.data?.orderId || createdOrder?.orderId || createdOrder?.data?.id || createdOrder?.id
+
+      if (createdOrderId && (pickupCoords || deliveryCoords)) {
+        await AsyncStorage.setItem(
+          `order_${createdOrderId}`,
+          JSON.stringify({
+            pickupLat: pickupCoords?.latitude ?? null,
+            pickupLon: pickupCoords?.longitude ?? null,
+            deliveryLat: deliveryCoords?.latitude ?? null,
+            deliveryLon: deliveryCoords?.longitude ?? null,
+          })
+        )
+      }
+
       Alert.alert(
         'Заказ создан!',
         'Курьер будет назначен в ближайшее время',
-        [{ text: 'OK', onPress: () => navigation.navigate('Orders') }]
+        [{ text: 'OK', onPress: () => navigation.navigate('OrdersTab') }]
       )
     } catch (err) {
       console.log('ERROR RESPONSE:', JSON.stringify(err?.response?.data, null, 2))
