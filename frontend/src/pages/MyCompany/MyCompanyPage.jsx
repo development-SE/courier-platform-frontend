@@ -66,7 +66,7 @@ export const MyCompanyPage = () => {
     setError(null)
     try {
       const usersData = await usersApi.list({ page: 1, pageSize: 1000 })
-      const directorUser = usersData.items.find(user => user.role === 'Director') || usersData.items[0]
+      const directorUser = usersData.items.find(user => user.role?.toUpperCase() === 'DIRECTOR') || usersData.items[0]
       setDirector(directorUser || null)
 
       if (directorUser?.companyId) {
@@ -121,7 +121,7 @@ export const MyCompanyPage = () => {
     try {
       const result = await usersApi.list({
         search: employeeSearch,
-        role: 'Manager',
+        role: 'MANAGER',
         companyId,
         page: employeePage,
         pageSize: employeePageSize,
@@ -202,7 +202,7 @@ export const MyCompanyPage = () => {
       const updated = await usersApi.update(director.id, {
         ...directorForm,
         companyId: director.companyId,
-        role: director.role || 'Director',
+        role: director.role || 'DIRECTOR',
       })
       setDirector(updated)
       setDirectorEditMode(false)
@@ -302,13 +302,13 @@ export const MyCompanyPage = () => {
         await usersApi.create({
           ...formData,
           companyId: company.id,
-          role: 'Manager',
+          role: 'MANAGER',
         })
       } else if (selectedEmployee) {
         await usersApi.update(selectedEmployee.id, {
           ...formData,
           companyId: company.id,
-          role: 'Manager',
+          role: 'MANAGER',
         })
       }
       setEmployeeModalOpen(false)
@@ -338,7 +338,7 @@ export const MyCompanyPage = () => {
   return (
     <div className="company-profile-page">
       <div className="company-profile-header">
-        <h1>Профиль компании</h1>
+        <h1>Профиль директора</h1>
       </div>
 
       {error && <div className="page-error">{error}</div>}

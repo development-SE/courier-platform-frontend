@@ -74,7 +74,9 @@ export const CompaniesTable = ({
               <td className="number-col">{idx + 1}</td>
               <td className="director-col">
                 <span className="director-primary">{company.director || '—'}</span>
-                <span className="director-secondary">{company.id}</span>
+                {company.directorId && (
+                  <span className="director-secondary">{company.directorId}</span>
+                )}
               </td>
               <td className="bin-col">{company.bin}</td>
               <td className="company-col">

@@ -9,7 +9,9 @@ import './usersPage.css'
 
 export const UsersPage = () => {
   const session = auth.getSession()
-  const isAdmin = session?.role === 'ADMIN'
+  const role = session?.role || ''
+  const isAdmin    = role === 'ADMIN' || role === 'SUPER_ADMIN'
+  const pageTitle  = isAdmin ? 'Пользователи' : 'Сотрудники'
   const {
     users,
     companies,
@@ -35,11 +37,13 @@ export const UsersPage = () => {
   const [selectedUser, setSelectedUser] = useState(null)
   const [modalError, setModalError] = useState(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteError, setDeleteError] = useState(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
 
+  // Director always sees only MANAGERs; non-admin cannot change the role filter
   useEffect(() => {
-    if (!isAdmin && filters.role !== 'Manager') {
-      handleFilterChange({ ...filters, role: 'Manager' })
+    if (!isAdmin && filters.role !== 'MANAGER') {
+      handleFilterChange({ ...filters, role: 'MANAGER' })
     }
   }, [filters, handleFilterChange, isAdmin])
 
@@ -56,13 +60,14 @@ export const UsersPage = () => {
   }
 
   const handleCompanyFilterChange = (e) => {
+    if (!isAdmin) return   // Director cannot change company filter
     const value = e.target.value
     handleFilterChange({ ...filters, companyId: value })
   }
 
   const handleClearFilters = () => {
     setSearch('')
-    handleFilterChange({ search: '', role: isAdmin ? '' : 'Manager', companyId: '' })
+    handleFilterChange({ search: '', role: isAdmin ? '' : 'MANAGER', companyId: '' })
   }
   const handleAddUser = () => {
     setModalMode('create')
@@ -125,19 +130,21 @@ export const UsersPage = () => {
 
   const handleDeleteClick = () => {
     if (selectedIds.length > 0) {
+      setDeleteError(null)
       setDeleteConfirmOpen(true)
     }
   }
 
   const handleConfirmDelete = async () => {
     try {
+      setDeleteError(null)
       for (const id of selectedIds) {
         await handleDelete(id)
       }
       setDeleteConfirmOpen(false)
       setSelectedIds([])
     } catch (err) {
-      setModalError(err.message)
+      setDeleteError(err.message)
     }
   }
 
@@ -151,7 +158,7 @@ export const UsersPage = () => {
   }
 
   const usersWithCompanyNames = users.map(user => {
-    if (user.role === 'Courier' || user.role === 'User') {
+    if (user.role === 'COURIER' || user.role === 'USER') {
       return {
         ...user,
         companyName: '---',
@@ -169,72 +176,71 @@ export const UsersPage = () => {
   return (
     <div className="users-page">
       <div className="users-header">
-        <h1>Пользователи</h1>
+        <h1>{pageTitle}</h1>
       </div>
 
       {error && <div className="page-error">{error}</div>}
 
-      {selectedIds.length === 0 ? (
-        <div className="users-toolbar">
-          <div className="toolbar-left">
-            <button
-              className="filter-btn"
-              disabled={loading}
-              title="Filter"
-              onClick={() => setFiltersOpen(prev => !prev)}
-              aria-expanded={filtersOpen}
-              aria-controls="users-filters"
-            >
-              <img src="/src/assets/filter.png" alt="Filter" width={15} height={15} />
-            </button>
-            <input
-              type="text"
-              placeholder="Search..."
-              value={search}
-              onChange={handleSearchChange}
-              className="search-input"
-            />
-          </div>
-          <div className="toolbar-right">
-            <button onClick={handleAddUser} className="btn-add-user" disabled={loading}>
-              + Добавить
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="action-bar">
-          <div className="action-left">
-            <button
-              onClick={handleDeleteClick}
-              disabled={loading}
-              className="action-btn-icon delete-icon"
-              title="Удалить"
-            >
-              <img src="/src/assets/icon.png" alt="Logo" width={15} height={15} />
-            </button>
-            <span className="selection-info">{selectedIds.length} selected</span>
-          </div>
-          <div className="action-buttons">
-            <button
-              onClick={handleEdit}
-              disabled={selectedIds.length !== 1 || loading}
-              className="action-btn"
-            >
-              Редактировать
-            </button>
-            <button
-              onClick={handleView}
-              disabled={selectedIds.length !== 1 || loading}
-              className="action-btn"
-            >
-              Посмотреть
-            </button>
-            <button onClick={handleAddUser} disabled={loading} className="btn-add-user">
-              + Добавить
-            </button>
-          </div>
-        </div>
-      )}
+      <div className={`users-toolbar ${selectedIds.length > 0 ? 'users-toolbar-selected' : ''}`}>
+        {selectedIds.length === 0 ? (
+          <>
+            <div className="toolbar-left">
+              <button
+                className="filter-btn"
+                disabled={loading}
+                title="Filter"
+                onClick={() => setFiltersOpen(prev => !prev)}
+                aria-expanded={filtersOpen}
+                aria-controls="users-filters"
+              >
+                <img src="/src/assets/filter.png" alt="Filter" width={15} height={15} />
+              </button>
+              <input
+                type="text"
+                placeholder="Search..."
+                value={search}
+                onChange={handleSearchChange}
+                className="search-input"
+              />
+            </div>
+            <div className="toolbar-right">
+              <button onClick={handleAddUser} className="btn-add-user" disabled={loading}>
+                + Добавить
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="toolbar-left action-left">
+              <button
+                onClick={handleDeleteClick}
+                disabled={loading}
+                className="action-btn-icon delete-icon"
+                title="Удалить"
+              >
+                <img src="/src/assets/icon.png" alt="Logo" width={15} height={15} />
+              </button>
+              <span className="selection-info">{selectedIds.length} selected</span>
+            </div>
+            <div className="toolbar-right action-buttons">
+              <button
+                onClick={handleEdit}
+                disabled={selectedIds.length !== 1 || loading}
+                className="action-btn"
+              >
+                Редактировать
+              </button>
+              <button
+                onClick={handleView}
+                disabled={selectedIds.length !== 1 || loading}
+                className="action-btn"
+              >
+                Посмотреть
+              </button>
+            </div>
+          </>
+        )}
+      </div>
 
       {selectedIds.length === 0 && filtersOpen && (
         <div id="users-filters" className="users-filters">
@@ -250,32 +256,34 @@ export const UsersPage = () => {
                 {isAdmin ? (
                   <>
                     <option value="">Все роли</option>
-                    <option value="Director">Директор</option>
-                    <option value="Manager">Менеджер</option>
-                    <option value="Courier">Курьер</option>
-                    <option value="User">Пользователь</option>
+                    <option value="DIRECTOR">Директор</option>
+                    <option value="MANAGER">Менеджер</option>
+                    <option value="COURIER">Курьер</option>
+                    <option value="USER">Пользователь</option>
                   </>
                 ) : (
-                  <option value="Manager">Менеджер</option>
+                  <option value="MANAGER">Менеджер</option>
                 )}
               </select>
             </div>
-            <div className="filter-group">
-              <label htmlFor="companyFilter">Компания</label>
-              <select
-                id="companyFilter"
-                value={filters.companyId}
-                onChange={handleCompanyFilterChange}
-                disabled={loading}
-              >
-                <option value="">Все компании</option>
-                {companies.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {isAdmin && (
+              <div className="filter-group">
+                <label htmlFor="companyFilter">Компания</label>
+                <select
+                  id="companyFilter"
+                  value={filters.companyId}
+                  onChange={handleCompanyFilterChange}
+                  disabled={loading}
+                >
+                  <option value="">Все компании</option>
+                  {companies.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <div className="filters-actions">
             <button
@@ -322,9 +330,13 @@ export const UsersPage = () => {
           ? `Удалить пользователя ${users.find(u => u.id === selectedIds[0])?.firstName} ${users.find(u => u.id === selectedIds[0])?.lastName}?`
           : `Удалить ${selectedIds.length} пользователей?`
         }
-        message={''}
+        message={deleteError || ''}
+        messageTone={deleteError ? 'error' : 'default'}
         onConfirm={handleConfirmDelete}
-        onCancel={() => setDeleteConfirmOpen(false)}
+        onCancel={() => {
+          setDeleteConfirmOpen(false)
+          setDeleteError(null)
+        }}
         loading={loading}
       />
 

@@ -32,13 +32,12 @@
   line-height: 1;
   min-height: 34px;
   white-space: nowrap;
-  transition: background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
-  margin-right: 20px
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+  margin-right: 0px
 }
 
 .btn-add-user:hover:not(:disabled) {
   background: #ce5a2c;
-  transform: translateY(-1px);
 }
 
 .btn-add-user:disabled {
@@ -70,6 +69,13 @@
   border-bottom: none;
   border-radius: 10px 10px 0 0;
   box-shadow: 0 6px 16px rgba(26, 86, 219, 0.06);
+  min-height: 56px;
+  transition: none;
+}
+
+.users-toolbar-selected {
+  background: #f7f9fc;
+  border-color: #e6eef8;
 }
 
 .toolbar-left {
@@ -77,12 +83,14 @@
   gap: 0.6rem;
   align-items: center;
   flex: 1;
+  min-width: 0;
 }
 
 .toolbar-right {
   display: flex;
   align-items: center;
   padding-right: 0.15rem;
+  flex-shrink: 0;
 }
 
 .users-toolbar + .users-table-wrapper {
@@ -200,14 +208,21 @@
 .action-bar {
   background: #f7f9fc;
   padding: 0.55rem 0.75rem;
-  border-radius: 10px;
-  margin: 0.5rem 0 0.9rem;
+  border-radius: 10px 10px 0 0;
+  margin: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 6px 16px rgba(26, 86, 219, 0.06);
   border: 1px solid #e6eef8;
   gap: 0.75rem;
+  min-height: 56px;
+}
+
+.action-bar + .users-table-wrapper {
+  margin-top: 0;
+  border-top: none;
+  border-radius: 0 0 10px 10px;
 }
 
 .action-left {
@@ -226,7 +241,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.18s ease;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
   border-radius: 8px;
   min-width: 36px;
   height: 34px;
@@ -235,7 +250,6 @@
 .action-btn-icon:hover:not(:disabled) {
   background: #fff4ef;
   border-color: #f1cfc3;
-  transform: translateY(-1px);
 }
 
 .action-btn-icon:disabled {
@@ -263,7 +277,9 @@
   cursor: pointer;
   font-weight: 600;
   font-size: 0.88rem;
-  transition: all 0.18s ease;
+  min-width: 112px;
+  min-height: 36px;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
 .action-btn:hover:not(:disabled) {
@@ -275,4 +291,56 @@
 .action-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.users-page .action-btn,
+.users-page .action-btn:focus,
+.users-page .action-btn:active {
+  background: #ffffff;
+  border-color: #e5e7eb;
+  color: #1f2937;
+  transform: none;
+}
+
+.users-page .action-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #dbe1ea;
+  color: #0f172a;
+}
+
+.users-page .action-bar,
+.users-page .users-toolbar {
+  min-height: 56px;
+}
+
+.users-page .action-btn,
+.users-page .btn-add-user,
+.users-page .action-btn-icon {
+  box-sizing: border-box;
+  transform: none !important;
+}
+
+.users-page .action-btn:hover,
+.users-page .action-btn:focus,
+.users-page .action-btn:active,
+.users-page .btn-add-user:hover,
+.users-page .btn-add-user:focus,
+.users-page .btn-add-user:active,
+.users-page .action-btn-icon:hover,
+.users-page .action-btn-icon:focus,
+.users-page .action-btn-icon:active {
+  transform: none !important;
+}
+
+.users-page .action-btn:disabled {
+  background: #ffffff;
+  border-color: #e5e7eb;
+  color: #94a3b8;
+  opacity: 1;
+}
+
+.users-page .action-buttons .btn-add-user {
+  min-width: 108px;
+  min-height: 36px;
+  margin-right: 20px;
 }

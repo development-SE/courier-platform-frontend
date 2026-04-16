@@ -60,11 +60,19 @@
 }
 
 .confirm-message {
-  margin: 0;
+  margin: 0.85rem auto 0;
   color: #3b3b3b;
   opacity: 0.92;
   line-height: 1.6;
   font-size: 1.05rem;
+}
+
+.confirm-message-error {
+  color: #b42318;
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.45;
+  opacity: 1;
 }
 
 .confirm-footer {

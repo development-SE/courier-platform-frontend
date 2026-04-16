@@ -11,8 +11,15 @@ const request = async (method, path, body = null, token = null) => {
     body: body ? JSON.stringify(body) : null,
   })
 
-  const data = await res.json()
-  if (!res.ok) throw new Error(data?.error?.message || data?.message || 'Request failed')
+  const data = await res.json().catch(() => null)
+  if (!res.ok) {
+    const message = res.status === 403
+      ? 'У вас недостаточно прав'
+      : data?.error?.message || data?.message || 'Request failed'
+    const error = new Error(message)
+    error.status = res.status
+    throw error
+  }
   return data
 }
 

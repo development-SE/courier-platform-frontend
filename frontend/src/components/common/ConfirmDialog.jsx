@@ -4,6 +4,7 @@ export const ConfirmDialog = ({
   isOpen,
   title,
   message,
+  messageTone = 'default',
   onConfirm,
   onCancel,
   loading,
@@ -19,7 +20,11 @@ export const ConfirmDialog = ({
 
         <div className="confirm-body">
           <h3 className="confirm-title">{title}</h3>
-          {message && <p className="confirm-message">{message}</p>}
+          {message && (
+            <p className={`confirm-message confirm-message-${messageTone}`}>
+              {message}
+            </p>
+          )}
         </div>
 
         <div className="confirm-footer">

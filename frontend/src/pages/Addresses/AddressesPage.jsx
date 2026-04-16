@@ -243,9 +243,6 @@ export const AddressesPage = () => {
             >
               Посмотреть
             </button>
-            <button onClick={handleAddAddress} disabled={loading} className="btn-add-user">
-              + Добавить адрес
-            </button>
           </div>
         </div>
       )}

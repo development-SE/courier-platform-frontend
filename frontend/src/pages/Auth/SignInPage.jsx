@@ -52,11 +52,6 @@ export const SignInPage = () => {
           <div className="auth-form-panel">
             <h1>Welcome!</h1>
 
-            <div className="auth-tab-row">
-              <button type="button" className="auth-tab active">Mail</button>
-              <button type="button" className="auth-tab">Phone number</button>
-            </div>
-
             <form className="auth-form" onSubmit={handleSubmit}>
               <input
                 type="email"
@@ -71,25 +66,18 @@ export const SignInPage = () => {
                 onChange={event => setPassword(event.target.value)}
               />
 
-              <div className="auth-form-meta">
-                <button type="button" className="link-muted">Forgot password?</button>
-              </div>
-
               {error && <div className="auth-error">{error}</div>}
 
               <button type="submit" disabled={loading}>
                 {loading ? 'Signing in...' : 'Log in'}
               </button>
             </form>
+              <div className="auth-form-meta">
+                <button type="button" className="link-muted">Forgot password?</button>
+              </div>
 
-            <div className="auth-or">OR</div>
 
-            <div className="auth-socials">
-              <button type="button">Continue with Google</button>
-              <button type="button">Continue with Facebook</button>
-              <button type="button">Continue with Apple</button>
-            </div>
-
+          
             <div className="auth-demo-accounts">
               <div>Admin: admin@example.com / 123456</div>
               <div>Partner: partner@example.com / 123456</div>

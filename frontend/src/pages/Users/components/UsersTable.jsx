@@ -38,23 +38,25 @@ export const UsersTable = ({
   }
 
   const getRoleClass = (role) => {
+    const normalizedRole = role?.toUpperCase()
     const classes = {
-      Director: 'director',
-      Manager: 'manager',
-      Courier: 'courier',
-      User: 'user',
+      DIRECTOR: 'director',
+      MANAGER: 'manager',
+      COURIER: 'courier',
+      USER: 'user',
     }
-    return classes[role] || 'user'
+    return classes[normalizedRole] || 'user'
   }
 
   const getRoleLabel = (role) => {
+    const normalizedRole = role?.toUpperCase()
     const labels = {
-      Director: 'Директор',
-      Manager: 'Менеджер',
-      Courier: 'Курьер',
-      User: 'Пользователь',
+      DIRECTOR: 'DIRECTOR',
+      MANAGER: 'MANAGER',
+      COURIER: 'COURIER',
+      USER: 'USER',
     }
-    return labels[role] || role
+    return labels[normalizedRole] || role
   }
 
   return (

@@ -168,9 +168,6 @@ export const CompaniesPage = () => {
             >
               Посмотреть
             </button>
-            <button onClick={handleAddCompany} disabled={loading} className="btn-add-user">
-              + Добавить
-            </button>
           </div>
         </div>
       )}

@@ -15,7 +15,7 @@ export const AddressModal = ({
   const initialFormData = address && (mode === 'edit' || mode === 'view')
     ? {
         type: address.type || 'company',
-        ownerId: address.ownerId || '',
+        ownerId: address.companyId || address.ownerId || '',
         street: address.street || '',
         house: address.house || '',
         apartment: address.apartment || '',
@@ -37,7 +37,7 @@ export const AddressModal = ({
     const newFormData = address && (mode === 'edit' || mode === 'view')
       ? {
           type: address.type || 'company',
-          ownerId: address.ownerId || '',
+          ownerId: address.companyId || address.ownerId || '',
           street: address.street || '',
           house: address.house || '',
           apartment: address.apartment || '',

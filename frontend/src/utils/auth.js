@@ -20,6 +20,16 @@ export const auth = {
     return this.getSession()?.accessToken || null
   },
 
+  /** Decode JWT payload without verifying signature (client-side only). */
+  decodeToken(token) {
+    try {
+      const payload = token.split('.')[1]
+      return JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))
+    } catch {
+      return null
+    }
+  },
+
   getDefaultRoute(session = null) {
     const activeSession = session || this.getSession()
     if (!activeSession) return '/sign-in'
@@ -29,8 +39,9 @@ export const auth = {
       case 'SUPER_ADMIN':
         return '/orders'
       case 'DIRECTOR':
-      case 'MANAGER':
       case 'PARTNER':
+        return '/'
+      case 'MANAGER':
         return '/my-company'
       case 'USER':
       case 'CLIENT':
@@ -42,11 +53,13 @@ export const auth = {
 
   async signIn(email, password) {
     const data = await api.post('/auth/login', { email, password })
+    const decoded = this.decodeToken(data.data.accessToken)
     const session = {
       accessToken: data.data.accessToken,
       refreshToken: data.data.refreshToken,
       role: data.data.role,
-      userId: data.data.userId,
+      userId: decoded?.sub || null,
+      companyId: decoded?.companyId || null,
     }
     localStorage.setItem(SESSION_KEY, JSON.stringify(session))
     return session

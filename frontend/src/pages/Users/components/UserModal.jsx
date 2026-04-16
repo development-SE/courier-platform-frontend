@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect } from 'react'
+import { auth } from '../../../utils/auth'
 import './userModal.css'
 
 export const UserModal = ({
@@ -11,6 +12,9 @@ export const UserModal = ({
   loading,
   error,
 }) => {
+  const session = auth.getSession()
+  const callerRole = session?.role || ''
+  const isDirector = callerRole === 'DIRECTOR' || callerRole === 'PARTNER'
   const initialFormData = user && (mode === 'edit' || mode === 'view')
     ? {
         firstName: user.firstName || '',
@@ -67,34 +71,21 @@ export const UserModal = ({
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setFormData(prev => {
-      if (name === 'role') {
-        const next = { ...prev, role: value }
-        if (value === 'Courier' || value === 'User') {
-          next.companyId = ''
-        }
-        return next
-      }
-      return {
-        ...prev,
-        [name]: value,
-      }
-    })
+    setFormData(prev => ({ ...prev, [name]: value }))
     if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: '',
-      }))
+      setErrors(prev => ({ ...prev, [name]: '' }))
     }
   }
+
+  const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/
 
   const validateForm = () => {
     const newErrors = {}
 
     if (isCreateMode && !formData.password.trim()) {
       newErrors.password = 'Пароль обязателен'
-    } else if (isCreateMode && formData.password.length < 8) {
-      newErrors.password = 'Минимум 8 символов'
+    } else if (isCreateMode && !PASSWORD_REGEX.test(formData.password)) {
+      newErrors.password = 'Минимум 8 символов, включая заглавную, строчную, цифру и спецсимвол (@$!%*?&)'
     }
 
     if (!formData.firstName.trim()) {
@@ -113,10 +104,17 @@ export const UserModal = ({
 
     if (!formData.phone.trim()) {
       newErrors.phone = 'Телефон обязателен'
+    } else if (!/^\+[0-9]{10,14}$/.test(formData.phone.trim())) {
+      newErrors.phone = 'Формат: +77085555555 (без пробелов)'
     }
 
-    if (!formData.role) {
+    if (!isDirector && !formData.role) {
       newErrors.role = 'Роль обязательна'
+    }
+
+    // For Admin creating with explicit company selection
+    if (!isDirector && isCreateMode && (formData.role === 'DIRECTOR' || formData.role === 'MANAGER') && !formData.companyId) {
+      newErrors.companyId = 'Компания обязательна для данной роли'
     }
 
     setErrors(newErrors)
@@ -129,7 +127,13 @@ export const UserModal = ({
     if (!validateForm()) return
 
     try {
-      await onSave(formData)
+      // Director always creates MANAGER; no companyId needed (backend uses X-Company-Id)
+      const payload = isDirector && isCreateMode
+        ? { ...formData, role: 'MANAGER', companyId: undefined }
+        : isDirector
+          ? { ...formData, companyId: undefined }
+        : formData
+      await onSave(payload)
     } catch {
       // Error handled by parent
     }
@@ -139,8 +143,18 @@ export const UserModal = ({
 
   const isViewMode = mode === 'view' && !isEditing
   const isCreateMode = mode === 'create'
-  const isCompanyDisabled = isViewMode || formData.role === 'Courier' || formData.role === 'User'
+  const isCompanyDisabled = isViewMode
   const title = isCreateMode ? 'Добавить пользователя' : 'Пользователь'
+  const getRoleLabel = (role) => {
+    const normalizedRole = role?.toUpperCase()
+    const labels = {
+      DIRECTOR: 'Директор',
+      MANAGER: 'Менеджер',
+      COURIER: 'Курьер',
+      USER: 'Пользователь',
+    }
+    return labels[normalizedRole] || role || ''
+  }
 
   return (
     <div className="modal-overlay" onClick={onCancel}>
@@ -209,20 +223,28 @@ export const UserModal = ({
 
             <div className="form-group">
               <label htmlFor="role">Роль</label>
-              <select
-                id="role"
-                name="role"
-                value={formData.role}
-                onChange={handleChange}
-                disabled={isViewMode}
-                className={errors.role ? 'input-error' : ''}
-              >
-                <option value="">Выберите роль</option>
-                <option value="Director">Директор</option>
-                <option value="Manager">Менеджер</option>
-                <option value="Courier">Курьер</option>
-                <option value="User">Пользователь</option>
-              </select>
+              {isDirector ? (
+                /* Director can only create MANAGERs, but view/edit shows the selected user's real role. */
+                <input
+                  id="role"
+                  type="text"
+                  value={isCreateMode ? 'Менеджер' : getRoleLabel(formData.role)}
+                  disabled
+                />
+              ) : (
+                <select
+                  id="role"
+                  name="role"
+                  value={formData.role}
+                  onChange={handleChange}
+                  disabled={isViewMode}
+                  className={errors.role ? 'input-error' : ''}
+                >
+                  <option value="">Выберите роль</option>
+                  <option value="DIRECTOR">Директор</option>
+                  <option value="MANAGER">Менеджер</option>
+                </select>
+              )}
               {errors.role && <span className="error-text">{errors.role}</span>}
             </div>
           </div>
@@ -257,23 +279,28 @@ export const UserModal = ({
           </div>
         )}
 
-          <div className="form-group full-width">
-            <label htmlFor="companyId">Компания</label>
-            <select
-              id="companyId"
-              name="companyId"
-              value={formData.companyId}
-              onChange={handleChange}
-              disabled={isCompanyDisabled}
-            >
-              <option value="">Выберите компанию</option>
-              {companies.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Director doesn't choose a company — backend uses X-Company-Id from JWT */}
+          {!isDirector && (
+            <div className="form-group full-width">
+              <label htmlFor="companyId">Компания</label>
+              <select
+                id="companyId"
+                name="companyId"
+                value={formData.companyId}
+                onChange={handleChange}
+                disabled={isCompanyDisabled}
+                className={errors.companyId ? 'input-error' : ''}
+              >
+                <option value="">Выберите компанию</option>
+                {companies.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              {errors.companyId && <span className="error-text">{errors.companyId}</span>}
+            </div>
+          )}
 
           {!isViewMode && (
             <div className="modal-footer">
