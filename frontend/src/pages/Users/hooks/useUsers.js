@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { usersApi } from '../../../api/users.api'
 import { companiesApi } from '../../../api/companies.api'
 
-export const useUsers = (initialPageSize = 10) => {
+export const useUsers = (initialPageSize = 10, options = {}) => {
+  const { canViewAdmins = false } = options
   const [users, setUsers] = useState([])
   const [companies, setCompanies] = useState([])
   const [loading, setLoading] = useState(false)
@@ -22,7 +23,26 @@ export const useUsers = (initialPageSize = 10) => {
     setLoading(true)
     setError(null)
     try {
-      const result = await usersApi.list({ ...f, page: p, pageSize: ps })
+      let result
+      if (canViewAdmins && f.role === 'ADMIN') {
+        // Fetch only admins
+        result = await usersApi.listAdmins({ search: f.search, page: p, pageSize: ps })
+      } else if (canViewAdmins && f.role === '') {
+        // Fetch all roles (employees + admins)
+        const employeesResult = await usersApi.list({ ...f, page: p, pageSize: ps })
+        const adminsResult = await usersApi.listAdmins({ search: f.search, page: 1, pageSize: 100 })
+        const allItems = [...employeesResult.items, ...adminsResult.items]
+        // Simple pagination - combine all and slice
+        const startIdx = (p - 1) * ps
+        const endIdx = startIdx + ps
+        result = {
+          items: allItems.slice(startIdx, endIdx),
+          total: allItems.length
+        }
+      } else {
+        // Fetch employees with current filters
+        result = await usersApi.list({ ...f, page: p, pageSize: ps })
+      }
       setUsers(result.items)
       setTotal(result.total)
     } catch (err) {
@@ -30,11 +50,11 @@ export const useUsers = (initialPageSize = 10) => {
     } finally {
       setLoading(false)
     }
-  }, [filters, page, pageSize])
+  }, [filters, page, pageSize, canViewAdmins])
 
   const fetchCompanies = useCallback(async () => {
     try {
-      const data = await companiesApi.list()
+      const data = await companiesApi.list({ pageSize: 100 })
       const items = Array.isArray(data) ? data : data.items
       setCompanies(items || [])
     } catch (err) {
@@ -74,6 +94,7 @@ export const useUsers = (initialPageSize = 10) => {
       await usersApi.create(dto)
       setSelectedIds([])
       await fetchUsers(filters, page, pageSize)
+      await fetchCompanies()
     } catch (err) {
       setError(err.message)
       throw err
@@ -89,6 +110,7 @@ export const useUsers = (initialPageSize = 10) => {
       await usersApi.update(id, dto)
       setSelectedIds([])
       await fetchUsers(filters, page, pageSize)
+      await fetchCompanies()
     } catch (err) {
       setError(err.message)
       throw err
@@ -97,13 +119,14 @@ export const useUsers = (initialPageSize = 10) => {
     }
   }
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id, role) => {
     setLoading(true)
     setError(null)
     try {
-      await usersApi.remove(id)
+      await usersApi.remove(id, role)
       setSelectedIds(prev => prev.filter(sid => sid !== id))
       await fetchUsers(filters, page, pageSize)
+      await fetchCompanies()
     } catch (err) {
       setError(err.message)
       throw err

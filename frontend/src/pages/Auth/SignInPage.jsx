@@ -41,10 +41,6 @@ export const SignInPage = () => {
           <div className="auth-visual-overlay">
             <h2>Welcome !</h2>
             <p>Log in to track, send and receive orders in one place.</p>
-            <div className="auth-visual-switch">
-              <span>Don&apos;t have an account?</span>
-              <Link to="/sign-up">Sign up</Link>
-            </div>
           </div>
         </section>
 
@@ -75,14 +71,6 @@ export const SignInPage = () => {
               <div className="auth-form-meta">
                 <button type="button" className="link-muted">Forgot password?</button>
               </div>
-
-
-          
-            <div className="auth-demo-accounts">
-              <div>Admin: admin@example.com / 123456</div>
-              <div>Partner: partner@example.com / 123456</div>
-              <div>User: user@example.com / 123456</div>
-            </div>
           </div>
         </section>
       </div>

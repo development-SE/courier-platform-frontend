@@ -121,6 +121,10 @@ export const PartnerLayout = ({ children, currentPage }) => {
           {/* ── MANAGER sidebar ── */}
           {isManager && (
             <>
+              <Link to="/"          className={`nav-link ${isActive('home')       ? 'active' : ''}`}>
+                <span className="nav-icon"><img src="/src/assets/Home.png" alt="" /></span>
+                <span className="nav-text">Home</span>
+              </Link>
               <Link to="/my-company" className={`nav-link ${isActive('my-company') ? 'active' : ''}`}>
                 <span className="nav-icon"><img src="/src/assets/Companies.png" alt="" /></span>
                 <span className="nav-text">Компания</span>

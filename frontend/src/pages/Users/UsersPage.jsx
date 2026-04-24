@@ -10,7 +10,8 @@ import './usersPage.css'
 export const UsersPage = () => {
   const session = auth.getSession()
   const role = session?.role || ''
-  const isAdmin    = role === 'ADMIN' || role === 'SUPER_ADMIN'
+  const isSuperAdmin = role === 'SUPER_ADMIN'
+  const isAdmin    = role === 'ADMIN' || isSuperAdmin
   const pageTitle  = isAdmin ? 'Пользователи' : 'Сотрудники'
   const {
     users,
@@ -29,7 +30,7 @@ export const UsersPage = () => {
     handleCreate,
     handleUpdate,
     handleDelete,
-  } = useUsers(10)
+  } = useUsers(10, { canViewAdmins: isSuperAdmin })
 
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -39,6 +40,7 @@ export const UsersPage = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteError, setDeleteError] = useState(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const isAdminUsersView = isSuperAdmin && filters.role === 'ADMIN'
 
   // Director always sees only MANAGERs; non-admin cannot change the role filter
   useEffect(() => {
@@ -139,7 +141,8 @@ export const UsersPage = () => {
     try {
       setDeleteError(null)
       for (const id of selectedIds) {
-        await handleDelete(id)
+        const user = users.find(u => u.id === id)
+        await handleDelete(id, user?.role)
       }
       setDeleteConfirmOpen(false)
       setSelectedIds([])
@@ -158,7 +161,7 @@ export const UsersPage = () => {
   }
 
   const usersWithCompanyNames = users.map(user => {
-    if (user.role === 'COURIER' || user.role === 'USER') {
+    if (user.role === 'ADMIN' || user.role === 'COURIER' || user.role === 'USER') {
       return {
         ...user,
         companyName: '---',
@@ -204,7 +207,7 @@ export const UsersPage = () => {
               />
             </div>
             <div className="toolbar-right">
-              <button onClick={handleAddUser} className="btn-add-user" disabled={loading}>
+              <button onClick={handleAddUser} className="btn-add-user" disabled={loading || isAdminUsersView}>
                 + Добавить
               </button>
             </div>
@@ -256,6 +259,7 @@ export const UsersPage = () => {
                 {isAdmin ? (
                   <>
                     <option value="">Все роли</option>
+                    {isSuperAdmin && <option value="ADMIN">ADMIN</option>}
                     <option value="DIRECTOR">Директор</option>
                     <option value="MANAGER">Менеджер</option>
                     <option value="COURIER">Курьер</option>

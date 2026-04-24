@@ -1,7 +1,8 @@
-﻿import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { companiesApi } from '../../api/companies.api'
 import { usersApi } from '../../api/users.api'
 import { addressesApi } from '../../api/addresses.api'
+import { auth } from '../../utils/auth'
 import { ConfirmDialog } from '../../components/common/ConfirmDialog'
 import { CompanyAddressModal } from './components/CompanyAddressModal'
 import { EmployeeModal } from './components/EmployeeModal'
@@ -24,6 +25,12 @@ const mapDirectorForm = (director) => ({
 })
 
 export const MyCompanyPage = () => {
+  const session = auth.getSession()
+  const currentRole = session?.role || ''
+  const currentCompanyId = session?.companyId || ''
+  const canEditCompanyProfile = currentRole === 'DIRECTOR' || currentRole === 'PARTNER'
+  const canManageStaff = canEditCompanyProfile
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -65,23 +72,25 @@ export const MyCompanyPage = () => {
     setLoading(true)
     setError(null)
     try {
-      const usersData = await usersApi.list({ page: 1, pageSize: 1000 })
-      const directorUser = usersData.items.find(user => user.role?.toUpperCase() === 'DIRECTOR') || usersData.items[0]
-      setDirector(directorUser || null)
+      const companiesData = await companiesApi.list({ page: 1, pageSize: 1000 })
+      const companyData = currentCompanyId
+        ? companiesData.items.find(item => item.id === currentCompanyId) || companiesData.items[0] || null
+        : companiesData.items[0] || null
+      setCompany(companyData)
 
-      if (directorUser?.companyId) {
-        const companiesData = await companiesApi.list({ page: 1, pageSize: 1000 })
-        const companyData = companiesData.items.find(item => item.id === directorUser.companyId) || null
-        setCompany(companyData)
+      if (canEditCompanyProfile) {
+        const usersData = await usersApi.list({ page: 1, pageSize: 1000 })
+        const directorUser = usersData.items.find(user => user.role?.toUpperCase() === 'DIRECTOR') || null
+        setDirector(directorUser)
       } else {
-        setCompany(null)
+        setDirector(null)
       }
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [canEditCompanyProfile, currentCompanyId])
 
   const loadAddresses = useCallback(async (companyId) => {
     if (!companyId) {
@@ -110,7 +119,7 @@ export const MyCompanyPage = () => {
   }, [addressSearch, addressPage, addressPageSize])
 
   const loadEmployees = useCallback(async (companyId) => {
-    if (!companyId) {
+    if (!canManageStaff || !companyId) {
       setEmployees([])
       setEmployeesTotal(0)
       return
@@ -133,7 +142,7 @@ export const MyCompanyPage = () => {
     } finally {
       setLoading(false)
     }
-  }, [employeeSearch, employeePage, employeePageSize])
+  }, [employeeSearch, employeePage, employeePageSize, canManageStaff])
 
   useEffect(() => {
     loadDirectorAndCompany()
@@ -338,13 +347,16 @@ export const MyCompanyPage = () => {
   return (
     <div className="company-profile-page">
       <div className="company-profile-header">
-        <h1>Профиль директора</h1>
+        <h1>{canEditCompanyProfile ? '\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0434\u0438\u0440\u0435\u043a\u0442\u043e\u0440\u0430' : '\u041c\u043e\u044f \u043a\u043e\u043c\u043f\u0430\u043d\u0438\u044f'}</h1>
       </div>
 
       {error && <div className="page-error">{error}</div>}
 
       <div className="profile-grid">
+        {canEditCompanyProfile && (
+
         <DirectorProfileCard
+
           director={director}
           directorEditMode={directorEditMode}
           directorForm={directorForm}
@@ -357,12 +369,14 @@ export const MyCompanyPage = () => {
           }}
           onChange={handleDirectorChange}
         />
+        )}
 
         <CompanyInfoCard
           company={company}
           companyEditMode={companyEditMode}
           companyForm={companyForm}
           loading={loading}
+          canEdit={canEditCompanyProfile}
           onEdit={() => setCompanyEditMode(true)}
           onSave={handleCompanySave}
           onCancel={() => {
@@ -394,7 +408,7 @@ export const MyCompanyPage = () => {
           setDeleteAddressOpen(true)
         }}
       />
-
+      {canManageStaff && (
       <CompanyEmployeesSection
         loading={loading}
         company={company}
@@ -416,6 +430,7 @@ export const MyCompanyPage = () => {
           setDeleteEmployeeOpen(true)
         }}
       />
+      )}
 
       <CompanyAddressModal
         key={`address-${addressModalMode}-${selectedAddress?.id || 'new'}-${addressModalOpen ? 'open' : 'closed'}`}

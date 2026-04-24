@@ -79,6 +79,13 @@ export const UserModal = ({
 
   const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/
 
+  const companyHasDirector = (company) => {
+    const directorName = String(company?.director || '').trim()
+    return Boolean(company?.directorId) || (directorName && directorName !== 'Not assigned')
+  }
+  const selectedCompany = companies.find(c => c.id === formData.companyId)
+  const selectedCompanyHasDirector = companyHasDirector(selectedCompany)
+
   const validateForm = () => {
     const newErrors = {}
 
@@ -115,6 +122,10 @@ export const UserModal = ({
     // For Admin creating with explicit company selection
     if (!isDirector && isCreateMode && (formData.role === 'DIRECTOR' || formData.role === 'MANAGER') && !formData.companyId) {
       newErrors.companyId = 'Компания обязательна для данной роли'
+    }
+
+    if (!isDirector && isCreateMode && formData.role === 'DIRECTOR' && selectedCompanyHasDirector) {
+      newErrors.companyId = 'Company already has a director'
     }
 
     setErrors(newErrors)
@@ -292,11 +303,13 @@ export const UserModal = ({
                 className={errors.companyId ? 'input-error' : ''}
               >
                 <option value="">Выберите компанию</option>
-                {companies.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
+                {companies
+                  .filter(c => !(isCreateMode && formData.role === 'DIRECTOR' && companyHasDirector(c)))
+                  .map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
               </select>
               {errors.companyId && <span className="error-text">{errors.companyId}</span>}
             </div>

@@ -1,4 +1,5 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
+import { auth } from '../../../utils/auth'
 import './addressModal.css'
 
 export const AddressModal = ({
@@ -12,6 +13,9 @@ export const AddressModal = ({
   loading,
   error,
 }) => {
+  const session = auth.getSession()
+  const callerRole = session?.role || ''
+  const isCompanyScoped = callerRole === 'DIRECTOR' || callerRole === 'PARTNER' || callerRole === 'MANAGER'
   const initialFormData = address && (mode === 'edit' || mode === 'view')
     ? {
         type: address.type || 'company',
@@ -83,7 +87,7 @@ export const AddressModal = ({
   const validateForm = () => {
     const newErrors = {}
 
-    if (!formData.ownerId) newErrors.ownerId = 'Выберите владельца'
+    if (!isCompanyScoped && !formData.ownerId) newErrors.ownerId = 'Выберите владельца'
     if (!formData.street.trim()) newErrors.street = 'Улица обязательна'
     if (!formData.house.trim()) newErrors.house = 'Дом обязателен'
 
@@ -95,7 +99,10 @@ export const AddressModal = ({
     e.preventDefault()
     if (!validateForm()) return
     try {
-      await onSave(formData)
+      const payload = isCompanyScoped
+        ? { ...formData, type: 'company', ownerId: undefined }
+        : formData
+      await onSave(payload)
     } catch {
       // Error handled by parent
     }
@@ -119,6 +126,7 @@ export const AddressModal = ({
 
         {error && <div className="modal-error">{error}</div>}
 
+        {!isCompanyScoped && (
         <div className="address-tabs">
           <button
             type="button"
@@ -137,8 +145,10 @@ export const AddressModal = ({
             Пользователь
           </button>
         </div>
+        )}
 
         <form onSubmit={handleSubmit} className="address-form">
+          {!isCompanyScoped && (
           <div className="form-group full-width">
             <label htmlFor="ownerId">{formData.type === 'company' ? 'Компания' : 'Пользователь'}</label>
             <select
@@ -165,6 +175,7 @@ export const AddressModal = ({
             </select>
             {errors.ownerId && <span className="error-text">{errors.ownerId}</span>}
           </div>
+          )}
 
           <div className="form-group full-width">
             <label htmlFor="street">Улица</label>
@@ -244,3 +255,4 @@ export const AddressModal = ({
     </div>
   )
 }
+
