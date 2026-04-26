@@ -7,6 +7,8 @@ import { MyCompanyPage } from '../pages/MyCompany/MyCompanyPage'
 import { OrdersPage } from '../pages/Orders/OrdersPage'
 import { OrderCreatePage } from '../pages/Orders/OrderCreatePage'
 import { OrderDetailsPage } from '../pages/Orders/OrderDetailsPage'
+import { ClientPage } from '../pages/Clients/ClientPage'
+import { CourierPage } from '../pages/Couriers/CourierPage'
 import { CompanySettingsPage } from '../pages/CompanySettings/CompanySettingsPage'
 import { CatalogPage } from '../pages/Catalog/CatalogPage'
 import { SignInPage } from '../pages/Auth/SignInPage'
@@ -108,6 +110,17 @@ function App() {
           }
         />
 
+        <Route
+          path="/couriers"
+          element={
+            <RequireAuth allowedRoles={ADMIN_ROLES}>
+              <PartnerLayout currentPage="couriers">
+                <CourierPage />
+              </PartnerLayout>
+            </RequireAuth>
+          }
+        />
+
         {/* Users/Employees — Admin + Director */}
         <Route
           path="/users"
@@ -121,6 +134,17 @@ function App() {
         />
 
         {/* Companies — Admin only */}
+        <Route
+          path="/clients"
+          element={
+            <RequireAuth allowedRoles={[...ADMIN_ROLES, ...DIRECTOR_ROLES, 'MANAGER']}>
+              <PartnerLayout currentPage="clients">
+                <ClientPage />
+              </PartnerLayout>
+            </RequireAuth>
+          }
+        />
+
         <Route
           path="/companies"
           element={

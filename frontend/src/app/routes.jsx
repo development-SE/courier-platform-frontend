@@ -5,6 +5,8 @@ import { MyCompanyPage } from '../pages/MyCompany/MyCompanyPage'
 import { OrdersPage } from '../pages/Orders/OrdersPage'
 import { OrderCreatePage } from '../pages/Orders/OrderCreatePage'
 import { OrderDetailsPage } from '../pages/Orders/OrderDetailsPage'
+import { ClientPage } from '../pages/Clients/ClientPage'
+import { CourierPage } from '../pages/Couriers/CourierPage'
 import { CompanySettingsPage } from '../pages/CompanySettings/CompanySettingsPage'
 import { CatalogPage } from '../pages/Catalog/CatalogPage'
 import { SignInPage } from '../pages/Auth/SignInPage'
@@ -20,7 +22,9 @@ export const routes = [
   { path: '/orders/new',        element: <OrderCreatePage />,    label: 'Create Order' },
   { path: '/orders/details',    element: <OrderDetailsPage />,   label: 'Order Details' },
   { path: '/orders/details/:orderId', element: <OrderDetailsPage />, label: 'Order Details By Id' },
-  { path: '/users',             element: <UsersPage />,          label: 'Users / Employees' },
+  { path: '/couriers',          element: <CourierPage />,        label: 'Couriers' },
+  { path: '/clients',           element: <ClientPage />,         label: 'Clients' },
+  { path: '/users',             element: <UsersPage />,          label: 'Employees' },
   { path: '/companies',         element: <CompaniesPage />,      label: 'Companies' },
   { path: '/addresses',         element: <AddressesPage />,      label: 'Addresses' },
   { path: '/company-settings',  element: <CompanySettingsPage />, label: 'Company Settings' },

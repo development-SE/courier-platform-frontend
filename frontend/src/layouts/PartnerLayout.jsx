@@ -83,7 +83,15 @@ export const PartnerLayout = ({ children, currentPage }) => {
               </Link>
               <Link to="/users"    className={`nav-link ${isActive('users')     ? 'active' : ''}`}>
                 <span className="nav-icon"><img src="/src/assets/Users.png" alt="" /></span>
-                <span className="nav-text">Users</span>
+                <span className="nav-text">Employees</span>
+              </Link>
+              <Link to="/clients"  className={`nav-link ${isActive('clients')   ? 'active' : ''}`}>
+                <span className="nav-icon"><img src="/src/assets/Users.png" alt="" /></span>
+                <span className="nav-text">Clients</span>
+              </Link>
+              <Link to="/couriers" className={`nav-link ${isActive('couriers')  ? 'active' : ''}`}>
+                <span className="nav-icon"><img src="/src/assets/Users.png" alt="" /></span>
+                <span className="nav-text">Couriers</span>
               </Link>
               <Link to="/addresses" className={`nav-link ${isActive('addresses') ? 'active' : ''}`}>
                 <span className="nav-icon"><img src="/src/assets/Address.png" alt="" /></span>
@@ -111,6 +119,10 @@ export const PartnerLayout = ({ children, currentPage }) => {
                 <span className="nav-icon"><img src="/src/assets/Address.png" alt="" /></span>
                 <span className="nav-text">Адреса</span>
               </Link>
+              <Link to="/clients"         className={`nav-link ${isActive('clients')         ? 'active' : ''}`}>
+                <span className="nav-icon"><img src="/src/assets/Users.png" alt="" /></span>
+                <span className="nav-text">Clients</span>
+              </Link>
               <Link to="/catalog"         className={`nav-link ${isActive('catalog')         ? 'active' : ''}`}>
                 <span className="nav-icon"><img src="/src/assets/Home.png" alt="" /></span>
                 <span className="nav-text">Каталог</span>
@@ -132,6 +144,10 @@ export const PartnerLayout = ({ children, currentPage }) => {
               <Link to="/orders"     className={`nav-link ${isActive('orders')     ? 'active' : ''}`}>
                 <span className="nav-icon"><img src="/src/assets/order.png" alt="" /></span>
                 <span className="nav-text">Заказы</span>
+              </Link>
+              <Link to="/clients"    className={`nav-link ${isActive('clients')    ? 'active' : ''}`}>
+                <span className="nav-icon"><img src="/src/assets/Users.png" alt="" /></span>
+                <span className="nav-text">Clients</span>
               </Link>
               <Link to="/addresses"  className={`nav-link ${isActive('addresses')  ? 'active' : ''}`}>
                 <span className="nav-icon"><img src="/src/assets/Address.png" alt="" /></span>

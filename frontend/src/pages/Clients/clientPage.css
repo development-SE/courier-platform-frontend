@@ -1,0 +1,164 @@
+.clients-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.clients-header h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.clients-error {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid #fecdd3;
+}
+
+.clients-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.clients-toolbar-left,
+.clients-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.clients-filter-btn,
+.clients-secondary-btn {
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+}
+
+.clients-filter-btn {
+  width: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clients-secondary-btn {
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.clients-search,
+.clients-company-filter {
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid #d1d5db;
+  padding: 0 12px;
+  background: #fff;
+  min-width: 220px;
+}
+
+.clients-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.clients-table-wrapper {
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: #ffffff;
+}
+
+.clients-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1080px;
+}
+
+.clients-table th,
+.clients-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  text-align: left;
+  font-size: 14px;
+}
+
+.clients-table thead th {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7280;
+  background: #f8fafc;
+}
+
+.clients-table tbody tr.selected {
+  background: #f0f9ff;
+}
+
+.clients-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.checkbox-col {
+  width: 44px;
+}
+
+.number-col {
+  width: 60px;
+}
+
+.client-name {
+  font-weight: 600;
+  color: #111827;
+}
+
+.client-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.clients-empty,
+.clients-loading {
+  padding: 20px;
+  color: #6b7280;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .clients-toolbar,
+  .clients-summary {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .clients-toolbar-left,
+  .clients-toolbar-right {
+    width: 100%;
+  }
+
+  .clients-search,
+  .clients-company-filter,
+  .clients-secondary-btn {
+    width: 100%;
+  }
+}

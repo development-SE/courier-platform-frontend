@@ -2,6 +2,48 @@ import { api } from '../utils/api'
 import { auth } from '../utils/auth'
 
 export const usersApi = {
+  async listCouriers({ search = '', page = 1, pageSize = 500 } = {}) {
+    const token = auth.getToken()
+    const authParams = new URLSearchParams()
+    authParams.append('role', 'COURIER')
+    authParams.append('page', page)
+    authParams.append('size', pageSize)
+
+    const userParams = new URLSearchParams()
+    if (search) userParams.append('search', search)
+    userParams.append('role', 'COURIER')
+    userParams.append('page', page)
+    userParams.append('size', pageSize)
+
+    const requests = [
+      api.get(`/auth/users?${authParams.toString()}`, token)
+        .then(data => data.data || [])
+        .catch(() => []),
+      api.get(`/users?${userParams.toString()}`, token)
+        .then(data => data.content || [])
+        .catch(() => []),
+    ]
+
+    const results = await Promise.all(requests)
+    const usersById = new Map()
+
+    results.flat().forEach(user => {
+      const id = user.userId || user.id
+      if (!id) return
+      usersById.set(String(id), {
+        ...user,
+        id,
+        userId: id,
+      })
+    })
+
+    const items = Array.from(usersById.values())
+    return {
+      items,
+      total: items.length,
+    }
+  },
+
   async list({ search = '', role = '', companyId = '', page = 1, pageSize = 10 } = {}) {
     const token = auth.getToken()
     const params = new URLSearchParams()

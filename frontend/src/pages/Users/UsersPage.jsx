@@ -11,8 +11,8 @@ export const UsersPage = () => {
   const session = auth.getSession()
   const role = session?.role || ''
   const isSuperAdmin = role === 'SUPER_ADMIN'
-  const isAdmin    = role === 'ADMIN' || isSuperAdmin
-  const pageTitle  = isAdmin ? 'Пользователи' : 'Сотрудники'
+  const isAdmin = role === 'ADMIN' || isSuperAdmin
+  const pageTitle = 'Employees'
   const {
     users,
     companies,
@@ -42,7 +42,6 @@ export const UsersPage = () => {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const isAdminUsersView = isSuperAdmin && filters.role === 'ADMIN'
 
-  // Director always sees only MANAGERs; non-admin cannot change the role filter
   useEffect(() => {
     if (!isAdmin && filters.role !== 'MANAGER') {
       handleFilterChange({ ...filters, role: 'MANAGER' })
@@ -62,7 +61,7 @@ export const UsersPage = () => {
   }
 
   const handleCompanyFilterChange = (e) => {
-    if (!isAdmin) return   // Director cannot change company filter
+    if (!isAdmin) return
     const value = e.target.value
     handleFilterChange({ ...filters, companyId: value })
   }
@@ -71,6 +70,7 @@ export const UsersPage = () => {
     setSearch('')
     handleFilterChange({ search: '', role: isAdmin ? '' : 'MANAGER', companyId: '' })
   }
+
   const handleAddUser = () => {
     setModalMode('create')
     setSelectedUser(null)

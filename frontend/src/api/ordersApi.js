@@ -1,20 +1,16 @@
 import axios from 'axios'
+import { auth } from '../utils/auth'
 
 const http = axios.create({
   baseURL: 'http://localhost:8080/api/v1',
 })
 
-// Attach JWT token to every request automatically
-http.interceptors.request.use((config) => {
-  const session = localStorage.getItem('auth_session')
-  if (session) {
-    const { accessToken } = JSON.parse(session)
-    if (accessToken) {
-      config.headers.Authorization = `Bearer ${accessToken}`
-    }
-  }
-  return config
-})
+const MAX_BACKEND_PAGE_SIZE = 100
+
+const authHeaders = () => {
+  const token = auth.getToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 // Map your backend response to the shape the UI already expects
 const toUiOrder = (order) => ({
@@ -25,6 +21,8 @@ const toUiOrder = (order) => ({
   serviceType:   order.serviceType || '—',
   comment:       order.comment || '',
   createdAt:     order.createdAt,
+  totalAmount:   order.totalAmount || 0,
+  companyId:     order.companyId || '',
 
   // recipient
   recipientInfo: {
@@ -70,9 +68,13 @@ const toPascalStatus = (status) => {
 
 export const ordersApi = {
   async list({ search = '', dateFrom = '', dateTo = '', page = 1, pageSize = 10 } = {}) {
-    const params = { page, size: pageSize, sortBy: 'createdAt', sortDesc: true }
+    const safePageSize = Math.min(Math.max(1, pageSize), MAX_BACKEND_PAGE_SIZE)
+    const params = { page, size: safePageSize, sortBy: 'createdAt', sortDesc: true }
 
-    const { data } = await http.get('/orders', { params })
+    const { data } = await http.get('/orders', {
+      params,
+      headers: authHeaders(),
+    })
 
     let items = (data.data?.orders || []).map(toUiOrder)
 
@@ -100,8 +102,40 @@ export const ordersApi = {
     }
   },
 
+  async listAll({ search = '', dateFrom = '', dateTo = '' } = {}) {
+    let page = 1
+    let total = 0
+    let allItems = []
+
+    while (true) {
+      const response = await this.list({
+        search,
+        dateFrom,
+        dateTo,
+        page,
+        pageSize: MAX_BACKEND_PAGE_SIZE,
+      })
+
+      total = response.total
+      allItems = allItems.concat(response.items)
+
+      if (allItems.length >= total || response.items.length < MAX_BACKEND_PAGE_SIZE) {
+        break
+      }
+
+      page += 1
+    }
+
+    return {
+      items: allItems,
+      total,
+    }
+  },
+
   async getById(orderId) {
-    const { data } = await http.get(`/orders/${orderId}`)
+    const { data } = await http.get(`/orders/${orderId}`, {
+      headers: authHeaders(),
+    })
     return toUiOrder(data.data)
   },
 
@@ -138,13 +172,17 @@ export const ordersApi = {
       items: dto.items || [{ itemId: 'ITEM-1', name: 'Package', quantity: 1 }],
     }
 
-    const { data } = await http.post('/orders', body)
+    const { data } = await http.post('/orders', body, {
+      headers: authHeaders(),
+    })
     return { id: data.data?.orderId, ...dto }
   },
 
   async updateStatus(orderId, newStatus) {
     const { data } = await http.patch(`/orders/${orderId}/status`, {
       newStatus: newStatus.toUpperCase(),
+    }, {
+      headers: authHeaders(),
     })
     return data
   },
