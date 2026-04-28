@@ -1,6 +1,8 @@
 export const SCREEN_IDS = Object.freeze({
   SIGN_IN: 'SignInScreen',
   SIGN_UP: 'SignUpScreen',
+  ONBOARDING: 'OnboardingScreen',
+  PENDING_APPROVAL: 'PendingApprovalScreen',
   DASHBOARD: 'DashboardScreen',
   ORDERS: 'OrdersScreen',
   ORDER_DETAIL: 'OrderDetailScreen',
@@ -16,6 +18,7 @@ export const SCREEN_IDS = Object.freeze({
   PROFILE_PAYOUT_HISTORY: 'ProfilePayoutHistoryScreen',
   PROFILE_NOTIFICATIONS: 'ProfileNotificationsScreen',
   PROFILE_LANGUAGE: 'ProfileLanguageScreen',
+  POST_LOGIN_ROUTER: 'PostLoginRouterScreen',
 })
 
 export const ROOT_ROUTES = Object.freeze({

@@ -57,6 +57,9 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   async signUp({ email, password, firstName, lastName, phone }) {
     const response = await registerWithBackend({ email: email.trim(), password, firstName: firstName.trim(), lastName: lastName.trim(), phone })
+
+    console.log('signUp response:', JSON.stringify(response))
+
     if (!response.ok) {
       return { ok: false, message: response.error.message }
     }

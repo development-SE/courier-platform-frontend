@@ -16,6 +16,8 @@ import { SCREEN_IDS } from '../../constants/screenIds'
 import type { RootStackParamList } from '../../navigation/types'
 import { useAuthStore } from '../../store/authStore'
 import { appTheme } from '../../theme/appTheme'
+import { fetchMyCourierProfile } from '../../data/profileApi'
+import { ROOT_ROUTES } from '../../constants/screenIds'
 
 type Props = NativeStackScreenProps<RootStackParamList, typeof SCREEN_IDS.SIGN_IN> & { loadingOnly?: boolean }
 
@@ -45,12 +47,41 @@ export function SignInScreen({ navigation, loadingOnly = false }: Props) {
   const panelBottom = Math.max(14, insets.bottom + 4)
 
   const handleSignIn = async () => {
-    setError('')
-    const ok = await signIn(login, password)
-    if (!ok) {
-      setError('Invalid login or password')
-    }
+  setError('')
+  const ok = await signIn(login, password)
+  if (!ok) {
+    setError('Invalid login or password')
+    return
   }
+
+  // Check courier profile status after login
+  try {
+    const accessToken = useAuthStore.getState().accessToken
+    if (!accessToken) {
+      navigation.replace(ROOT_ROUTES.MAIN_TABS)
+      return
+    }
+
+    const profileResult = await fetchMyCourierProfile(accessToken)
+
+    if (!profileResult.ok) {
+      // 404 or error = no profile yet → onboarding
+      navigation.replace(SCREEN_IDS.ONBOARDING)
+      return
+    }
+
+    const courier = profileResult.data
+    if (courier.employmentStatus === 'ONBOARDING' || !courier.isVerified) {
+      navigation.replace(SCREEN_IDS.PENDING_APPROVAL)
+      return
+    }
+
+    navigation.replace(ROOT_ROUTES.MAIN_TABS)
+  } catch {
+    // fallback — let them in, profile screen will show error
+    navigation.replace(ROOT_ROUTES.MAIN_TABS)
+  }
+}
 
   if (loadingOnly) {
     return (
@@ -99,7 +130,7 @@ export function SignInScreen({ navigation, loadingOnly = false }: Props) {
 
           <View style={styles.actionRow}>
             <Text style={styles.forgotText}>Forgot password</Text>
-            <Pressable onPress={() => void handleSignIn()} style={styles.loginButton}>
+            <Pressable onPress={() => handleSignIn()} style={styles.loginButton}>
               <Text style={styles.loginButtonText}>Log in</Text>
             </Pressable>
           </View>

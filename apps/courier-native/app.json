@@ -17,11 +17,12 @@
       }
     },
     "android": {
-      "usesCleartextTraffic": true,
-      "adaptiveIcon": {
-        "backgroundColor": "#10111a"
-      }
-    },
+  "package": "com.swiftdeliver.courier",
+  "usesCleartextTraffic": true,
+  "adaptiveIcon": {
+    "backgroundColor": "#10111a"
+  }
+},
     "plugins": [
       "expo-asset",
       "expo-secure-store"

@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View, Image } from 'react-native'
 import MapView, { Marker } from 'react-native-maps'
 import { Ionicons } from '@expo/vector-icons'
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet'
@@ -9,6 +9,7 @@ import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue,
 import { SCREEN_IDS } from '../../constants/screenIds'
 import { appTheme } from '../../theme/appTheme'
 import { useDashboardModel } from './useDashboardModel'
+import { useUserLocation } from '../../hooks/useUserLocation'
 
 const STATUS_LABEL: Record<'offline' | 'online' | 'busy', string> = {
   offline: 'Offline',
@@ -80,6 +81,7 @@ export function DashboardScreen() {
   const navigation = useNavigation<any>()
   const insets = useSafeAreaInsets()
   const bottomSheetRef = useRef<BottomSheet>(null)
+  const mapRef = useRef<MapView>(null)
   const animatedIndex = useSharedValue(0)
   const [sheetIndex, setSheetIndex] = useState(0)
 
@@ -101,16 +103,20 @@ export function DashboardScreen() {
     cancelActiveOrder,
   } = useDashboardModel()
 
-  const [longitude, latitude] = mapPosition
+  // Real-time location tracking
+  const { latitude: userLat, longitude: userLng } = useUserLocation()
+
+  // Use real location if available, otherwise fallback to map position
+  const [longitude, latitude] = [userLng ?? mapPosition[0], userLat ?? mapPosition[1]]
 
   const region = useMemo(
     () => ({
-      latitude,
-      longitude,
+      latitude: latitude || mapPosition[1],
+      longitude: longitude || mapPosition[0],
       latitudeDelta: 0.014,
       longitudeDelta: 0.014,
     }),
-    [latitude, longitude],
+    [latitude, longitude, mapPosition],
   )
 
   const ordersCount = hasActiveOrder ? '1' : '0'
@@ -234,15 +240,28 @@ export function DashboardScreen() {
     [],
   )
 
+  // Animate map to user location when available
+  useEffect(() => {
+    if (userLat && userLng && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: userLat,
+        longitude: userLng,
+        latitudeDelta: 0.014,
+        longitudeDelta: 0.014,
+      }, 800)
+    }
+  }, [userLat, userLng])
+
   return (
     <View style={styles.screen}>
-      <MapView style={StyleSheet.absoluteFill} customMapStyle={DARK_MAP_STYLE} initialRegion={region}>
-        <Marker
-          coordinate={{ latitude, longitude }}
-          title={courier ? `${courier.name} ${courier.lastName}` : 'Courier'}
-          description={courier?.park ?? 'Courier park'}
-        />
-      </MapView>
+      <MapView 
+        ref={mapRef}
+        style={StyleSheet.absoluteFill} 
+        customMapStyle={DARK_MAP_STYLE} 
+        initialRegion={region}
+        showsUserLocation={true}
+        showsMyLocationButton={false}
+      />
 
       <View pointerEvents="box-none" style={[styles.topBarContainer, { top: insets.top + 12 }]}>
         <Pressable style={styles.iconButton}>
@@ -1197,5 +1216,33 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: '800',
     letterSpacing: 0.7,
+  },
+  markerWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 60,
+    height: 60,
+  },
+  markerPulse: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(240, 141, 90, 0.25)',
+  },
+  markerIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#f08d5a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
 })
