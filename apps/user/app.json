@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "SwiftDeliver User",
+    "slug": "swiftdeliver-user",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*",
+      "../../assets/**/*"
+    ],
+    "ios": {
+      "bundleIdentifier": "kz.courier.swiftdeliver.user",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "kz.courier.swiftdeliver.user",
+      "adaptiveIcon": {
+        "backgroundColor": "#f3e9dc"
+      }
+    },
+    "plugins": [
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging",
+      "expo-asset",
+      "expo-localization"
+    ]
+  }
+}

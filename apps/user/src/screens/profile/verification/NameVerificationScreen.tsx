@@ -1,0 +1,81 @@
+import { useState } from 'react'
+import { Feather } from '@expo/vector-icons'
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import NameIllustration from '../../../../assets/name.svg'
+import { styles } from '../styles'
+
+type NameVerificationScreenProps = {
+  firstName: string
+  lastName: string
+  onBackPress: () => void
+  safeBottom: number
+  safeTop: number
+}
+
+export function NameVerificationScreen({
+  firstName,
+  lastName,
+  onBackPress,
+  safeBottom,
+  safeTop,
+}: NameVerificationScreenProps) {
+  const [draftFirstName, setDraftFirstName] = useState(firstName)
+  const [draftLastName, setDraftLastName] = useState(lastName)
+
+  return (
+    <View style={styles.nameScreen}>
+      <View style={[styles.nameHeader, { paddingTop: safeTop }]}>
+        <Pressable style={styles.editBackButton} onPress={onBackPress}>
+          <Feather name="arrow-left" size={24} color="#111111" />
+        </Pressable>
+        <Text allowFontScaling={false} style={styles.nameHeaderTitle}>Name</Text>
+        <View style={styles.editHeaderSpacer} />
+      </View>
+
+      <ScrollView
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.nameContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text allowFontScaling={false} style={styles.nameVerificationTitle}>Name Verification</Text>
+
+        <View style={styles.nameForm}>
+          <View style={styles.nameFieldGroup}>
+            <Text allowFontScaling={false} style={styles.nameFieldLabel}>Name</Text>
+            <TextInput
+              allowFontScaling={false}
+              value={draftFirstName}
+              onChangeText={setDraftFirstName}
+              placeholder="Name"
+              placeholderTextColor="rgba(0, 0, 0, 0.35)"
+              style={styles.nameInput}
+            />
+          </View>
+
+          <View style={styles.nameFieldGroup}>
+            <Text allowFontScaling={false} style={styles.nameFieldLabel}>Surname</Text>
+            <TextInput
+              allowFontScaling={false}
+              value={draftLastName}
+              onChangeText={setDraftLastName}
+              placeholder="Surname"
+              placeholderTextColor="rgba(0, 0, 0, 0.35)"
+              style={styles.nameInput}
+            />
+          </View>
+        </View>
+
+        <View style={styles.signatureWrap}>
+          <NameIllustration width={402} height={344} />
+        </View>
+      </ScrollView>
+
+      <View style={[styles.nameSaveArea, { paddingBottom: Math.max(24, safeBottom + 16) }]}>
+        <Pressable style={styles.nameSaveButton} onPress={onBackPress}>
+          <Text allowFontScaling={false} style={styles.nameSaveText}>Save</Text>
+        </Pressable>
+      </View>
+    </View>
+  )
+}
