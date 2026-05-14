@@ -255,6 +255,13 @@ const styles = StyleSheet.create({
     marginTop: 6,
     paddingHorizontal: 4,
   },
+  nameRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  nameField: {
+    flex: 1,
+  },
   label: {
     color: '#c9c5c5',
     fontSize: 15,

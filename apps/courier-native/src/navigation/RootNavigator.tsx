@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
+import { Ionicons } from '@expo/vector-icons'
 import { SCREEN_IDS, ROOT_ROUTES } from '../constants/screenIds'
 import type { MainTabParamList, RootStackParamList } from './types'
 import { appTheme } from '../theme/appTheme'
@@ -46,12 +47,54 @@ function MainTabs() {
         tabBarInactiveTintColor: appTheme.colors.textMuted,
       }}
     >
-      <Tabs.Screen name={SCREEN_IDS.DASHBOARD} component={DashboardScreen} options={{ title: 'Home' }} />
-      <Tabs.Screen name={SCREEN_IDS.ORDERS} component={OrdersScreen} options={{ title: 'Orders' }} />
-      <Tabs.Screen name={SCREEN_IDS.SLOTS} component={SlotsScreen} options={{ title: 'Slots' }} />
-      <Tabs.Screen name={SCREEN_IDS.MONEY} component={MoneyScreen} options={{ title: 'Money' }} />
-      <Tabs.Screen name={SCREEN_IDS.MESSAGES} component={MessagesScreen} options={{ title: 'Messages' }} />
-      <Tabs.Screen name={SCREEN_IDS.PROFILE} component={ProfileScreen} options={{ title: 'Profile' }} />
+      <Tabs.Screen
+        name={SCREEN_IDS.DASHBOARD}
+        component={DashboardScreen}
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name={SCREEN_IDS.ORDERS}
+        component={OrdersScreen}
+        options={{
+          title: 'Orders',
+          tabBarIcon: ({ color, size }) => <Ionicons name="cube-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name={SCREEN_IDS.SLOTS}
+        component={SlotsScreen}
+        options={{
+          title: 'Slots',
+          tabBarIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name={SCREEN_IDS.MONEY}
+        component={MoneyScreen}
+        options={{
+          title: 'Money',
+          tabBarIcon: ({ color, size }) => <Ionicons name="wallet-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name={SCREEN_IDS.MESSAGES}
+        component={MessagesScreen}
+        options={{
+          title: 'Messages',
+          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubble-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name={SCREEN_IDS.PROFILE}
+        component={ProfileScreen}
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
+        }}
+      />
     </Tabs.Navigator>
   )
 }

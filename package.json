@@ -10,7 +10,11 @@
     "native:start": "npm --prefix apps/courier-native start",
     "native:android": "npm --prefix apps/courier-native android",
     "native:ios": "npm --prefix apps/courier-native ios",
-    "native:typecheck": "npm --prefix apps/courier-native run typecheck"
+    "native:typecheck": "npm --prefix apps/courier-native run typecheck",
+    "user:start": "npm --prefix apps/user start",
+    "user:android": "npm --prefix apps/user android",
+    "user:ios": "npm --prefix apps/user ios",
+    "user:typecheck": "npm --prefix apps/user run typecheck"
   },
   "dependencies": {
     "lucide-react": "^0.511.0",

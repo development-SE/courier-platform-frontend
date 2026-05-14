@@ -12,7 +12,7 @@ const DEFAULT_BASE_URL = Platform.select({
 })
 
 export function getApiBaseUrl() {
-  return process.env.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_BASE_URL ?? 'http://192.168.1.252:8081'
+  return process.env.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_BASE_URL ?? 'http:// 10.202.21.33:8081'
 }
 
 export async function apiRequest<T>(
