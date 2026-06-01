@@ -18,10 +18,14 @@ import { SettingsScreen } from './SettingsScreen'
 import { styles } from './styles'
 
 type UserProfileScreenProps = {
+  accessToken: string
   email?: string
-  name?: string
+  firstName?: string
+  lastName?: string
+  phone?: string
   onHomePress?: () => void
   onOrdersPress?: () => void
+  onProfileUpdated?: (data: { firstName: string; lastName: string; email: string; phone: string }) => void
   onSignOut?: () => void
 }
 
@@ -34,9 +38,13 @@ const menuItems = [
 ]
 
 export function UserProfileScreen({
-  email,
-  name = 'Aman Zhanatov',
+  accessToken,
+  email: initialEmail,
+  firstName: initialFirstName,
+  lastName: initialLastName,
+  phone: initialPhone,
   onHomePress,
+  onProfileUpdated,
   onSignOut,
 }: UserProfileScreenProps) {
   const insets = useSafeAreaInsets()
@@ -50,6 +58,13 @@ export function UserProfileScreen({
   const heroHeight = Math.min(238, Math.max(202, height * 0.27))
   const avatarSize = Math.min(116, Math.max(96, width * 0.28))
   const horizontalPadding = Math.min(70, Math.max(32, width * 0.11))
+
+  const [profileFirstName, setProfileFirstName] = useState(initialFirstName ?? '')
+  const [profileLastName, setProfileLastName] = useState(initialLastName ?? '')
+  const [profileEmail, setProfileEmail] = useState(initialEmail ?? '')
+  const [profilePhone, setProfilePhone] = useState(initialPhone ?? '')
+
+  const displayName = [profileFirstName, profileLastName].filter(Boolean).join(' ') || 'User'
 
   const openEditProfile = () => {
     setIsEditOpen(true)
@@ -139,6 +154,14 @@ export function UserProfileScreen({
     }
   }
 
+  const handleProfileUpdated = (data: { firstName: string; lastName: string; email: string; phone: string }) => {
+    setProfileFirstName(data.firstName)
+    setProfileLastName(data.lastName)
+    setProfileEmail(data.email)
+    setProfilePhone(data.phone)
+    onProfileUpdated?.(data)
+  }
+
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -185,9 +208,9 @@ export function UserProfileScreen({
           />
 
           <View style={styles.identity}>
-            <Text allowFontScaling={false} style={styles.name}>{name}</Text>
+            <Text allowFontScaling={false} style={styles.name}>{displayName}</Text>
             <Text allowFontScaling={false} numberOfLines={1} style={styles.editProfile}>
-              {email ? email : 'Edit Profile'}
+              {profileEmail ? profileEmail : 'Edit Profile'}
             </Text>
           </View>
 
@@ -227,12 +250,15 @@ export function UserProfileScreen({
           ]}
         >
           <EditProfileScreen
-            email={email}
-            name={name}
+            accessToken={accessToken}
+            email={profileEmail}
+            name={displayName}
+            phone={profilePhone}
             safeTop={insets.top}
             safeBottom={insets.bottom}
             width={width}
             onBackPress={closeEditProfile}
+            onProfileUpdated={handleProfileUpdated}
           />
         </Animated.View>
       )}

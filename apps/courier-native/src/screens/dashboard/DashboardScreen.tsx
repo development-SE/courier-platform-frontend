@@ -1,5 +1,5 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Pressable, StyleSheet, Text, View, Modal, TextInput, Alert, ActivityIndicator } from 'react-native'
 import MapView, { Marker } from 'react-native-maps'
 import { Ionicons } from '@expo/vector-icons'
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet'
@@ -82,6 +82,9 @@ export function DashboardScreen() {
   const bottomSheetRef = useRef<BottomSheet>(null)
   const animatedIndex = useSharedValue(0)
   const [sheetIndex, setSheetIndex] = useState(0)
+  const [isOtpModalVisible, setIsOtpModalVisible] = useState(false)
+  const [otpCode, setOtpCode] = useState('')
+  const [isVerifying, setIsVerifying] = useState(false)
 
   const {
     courier,
@@ -99,7 +102,33 @@ export function DashboardScreen() {
     skipIncoming,
     advanceStage,
     cancelActiveOrder,
+    verifyOTP,
   } = useDashboardModel()
+
+  const handleActionButtonPress = () => {
+    if (stage === 'delivered') {
+      setIsOtpModalVisible(true)
+    } else {
+      void advanceStage()
+    }
+  }
+
+  const handleVerifyOTP = async () => {
+    if (!otpCode.trim()) {
+      Alert.alert('Ошибка', 'Пожалуйста, введите код подтверждения')
+      return
+    }
+    setIsVerifying(true)
+    const res = await verifyOTP(otpCode.trim())
+    setIsVerifying(false)
+    if (res.success) {
+      setIsOtpModalVisible(false)
+      setOtpCode('')
+      Alert.alert('Успех', 'Заказ успешно доставлен и подтвержден!')
+    } else {
+      Alert.alert('Ошибка подтверждения', res.message || 'Неверный код')
+    }
+  }
 
   const [longitude, latitude] = mapPosition
 
@@ -335,8 +364,8 @@ export function DashboardScreen() {
                   <Pressable style={styles.collapsedSecondaryButton} onPress={openOrderDetails}>
                     <Text style={styles.collapsedSecondaryText}>Order Details</Text>
                   </Pressable>
-                  <Pressable style={styles.collapsedPrimaryButton} onPress={() => void advanceStage()}>
-                    <Text style={styles.collapsedPrimaryText}>Arrived at pickup</Text>
+                  <Pressable style={styles.collapsedPrimaryButton} onPress={handleActionButtonPress}>
+                    <Text style={styles.collapsedPrimaryText}>{activeActionLabel}</Text>
                   </Pressable>
                 </View>
               </Animated.View>
@@ -431,7 +460,7 @@ export function DashboardScreen() {
           <View style={styles.bottomControls}>
             {hasActiveOrder ? (
               <Animated.View style={expandedFooterAnimatedStyle} pointerEvents={isExpanded ? 'auto' : 'none'}>
-                <Pressable style={styles.arrivedButton} onPress={() => void advanceStage()}>
+                <Pressable style={styles.arrivedButton} onPress={handleActionButtonPress}>
                   <Text style={styles.arrivedButtonText}>{activeActionLabel}</Text>
                 </Pressable>
                 <Pressable style={styles.cancelOrderInlineButton} onPress={() => void cancelActiveOrder()}>
@@ -449,6 +478,60 @@ export function DashboardScreen() {
           </View>
         </BottomSheetScrollView>
       </BottomSheet>
+      <Modal
+        visible={isOtpModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsOtpModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Ionicons name="shield-checkmark-outline" size={24} color="#ff9069" />
+              <Text style={styles.modalTitle}>Подтверждение доставки</Text>
+            </View>
+            <Text style={styles.modalText}>
+              Пожалуйста, попросите у клиента 6-значный код подтверждения и введите его ниже для завершения доставки.
+            </Text>
+            
+            <TextInput
+              style={styles.otpInput}
+              placeholder="000000"
+              placeholderTextColor="#6f7485"
+              keyboardType="number-pad"
+              maxLength={6}
+              value={otpCode}
+              onChangeText={setOtpCode}
+              editable={!isVerifying}
+            />
+
+            <View style={styles.modalActions}>
+              <Pressable
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                onPress={() => {
+                  setIsOtpModalVisible(false)
+                  setOtpCode('')
+                }}
+                disabled={isVerifying}
+              >
+                <Text style={styles.modalBtnTextCancel}>Отмена</Text>
+              </Pressable>
+              
+              <Pressable
+                style={[styles.modalBtn, styles.modalBtnConfirm]}
+                onPress={handleVerifyOTP}
+                disabled={isVerifying}
+              >
+                {isVerifying ? (
+                  <ActivityIndicator size="small" color="#2d1b13" />
+                ) : (
+                  <Text style={styles.modalBtnTextConfirm}>Подтвердить</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -1197,5 +1280,79 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: '800',
     letterSpacing: 0.7,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#161924',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#2a2f3f',
+    padding: 24,
+    gap: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalTitle: {
+    color: '#f2f3f7',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  modalText: {
+    color: '#9da2af',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  otpInput: {
+    backgroundColor: '#090b10',
+    borderWidth: 1,
+    borderColor: '#ff9069',
+    borderRadius: 14,
+    color: '#ff9069',
+    fontSize: 32,
+    fontWeight: '800',
+    textAlign: 'center',
+    paddingVertical: 14,
+    letterSpacing: 8,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnCancel: {
+    backgroundColor: '#202433',
+    borderWidth: 1,
+    borderColor: '#2a2f3f',
+  },
+  modalBtnConfirm: {
+    backgroundColor: '#ff9069',
+  },
+  modalBtnTextCancel: {
+    color: '#9da2af',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalBtnTextConfirm: {
+    color: '#2d1b13',
+    fontSize: 14,
+    fontWeight: '700',
   },
 })

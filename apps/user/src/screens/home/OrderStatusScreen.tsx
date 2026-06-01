@@ -26,8 +26,12 @@ import * as Location from 'expo-location'
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { calculateRoute, decodeRoutePolyline, RoutePoint } from '../../data/routesApi'
+import { getUserOrder } from '../../data/ordersApi'
+import { getOrderAssignment, getCourierLocation, autoAssignOrder } from '../../data/logisticsApi'
 
 type OrderStatusScreenProps = {
+  accessToken?: string
+  orderId?: string
   restaurantName: string
   orderNumber: string
   total: number
@@ -53,18 +57,18 @@ type EtaMode = 'preparing' | 'liveRoute' | 'delivered'
 const courierName = 'Aman'
 
 const restaurantLocation = {
-  latitude: 43.2389,
-  longitude: 76.8897,
+  latitude: 51.1282,
+  longitude: 71.4304,
 }
 
 const customerLocation = {
-  latitude: 43.2451,
-  longitude: 76.9123,
+  latitude: 51.1350,
+  longitude: 71.4450,
 }
 
 const courierStartLocation = {
-  latitude: 43.2318,
-  longitude: 76.8784,
+  latitude: 51.1200,
+  longitude: 71.4200,
 }
 
 const progressSteps = [
@@ -194,6 +198,8 @@ const hasGoogleMapsKey = Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY)
 const SIMULATION_TICK_MS = 1300
 
 export function OrderStatusScreen({
+  accessToken,
+  orderId,
   restaurantName,
   orderNumber,
   total,
@@ -212,6 +218,14 @@ export function OrderStatusScreen({
   const [distanceMeters, setDistanceMeters] = useState(4200)
   const [durationSeconds, setDurationSeconds] = useState(50 * 60)
   const [detailedStatus, setDetailedStatus] = useState<DetailedStatus>('Order received')
+  const [courierId, setCourierId] = useState<string | null>(null)
+  const [realCourierLocation, setRealCourierLocation] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [courierOnline, setCourierOnline] = useState<boolean>(false)
+  const [deliveryCode, setDeliveryCode] = useState<string | null>(null)
+  const [showPushNotification, setShowPushNotification] = useState<boolean>(false)
+  const pushAnim = useRef(new Animated.Value(-160)).current
+  const [restaurantCoords, setRestaurantCoords] = useState(restaurantLocation)
+  const [customerCoords, setCustomerCoords] = useState(customerLocation)
   const [milestoneIndex, setMilestoneIndex] = useState(1)
   const [isAddressModalVisible, setIsAddressModalVisible] = useState(false)
   const [isOrderDetailsVisible, setIsOrderDetailsVisible] = useState(false)
@@ -352,8 +366,8 @@ export function OrderStatusScreen({
   }, [currentStatusUi.etaMode, detailedStatus, durationSeconds])
 
   const initialRegion = useMemo(() => {
-    const latitude = (restaurantLocation.latitude + customerLocation.latitude) / 2
-    const longitude = (restaurantLocation.longitude + customerLocation.longitude) / 2
+    const latitude = (restaurantCoords.latitude + customerCoords.latitude) / 2
+    const longitude = (restaurantCoords.longitude + customerCoords.longitude) / 2
 
     return {
       latitude,
@@ -361,7 +375,7 @@ export function OrderStatusScreen({
       latitudeDelta: 0.04,
       longitudeDelta: 0.04,
     }
-  }, [])
+  }, [restaurantCoords, customerCoords])
 
   const placedAtText = useMemo(() => {
     const now = new Date()
@@ -557,8 +571,8 @@ export function OrderStatusScreen({
 
     const loadRoute = async () => {
       const response = await calculateRoute(
-        { lat: restaurantLocation.latitude, lng: restaurantLocation.longitude },
-        { lat: customerLocation.latitude, lng: customerLocation.longitude },
+        { lat: restaurantCoords.latitude, lng: restaurantCoords.longitude },
+        { lat: customerCoords.latitude, lng: customerCoords.longitude },
       )
 
       if (!isMounted) {
@@ -569,7 +583,7 @@ export function OrderStatusScreen({
       const normalizedRoute =
         decodedCoordinates.length >= 2
           ? decodedCoordinates
-          : [restaurantLocation, customerLocation]
+          : [restaurantCoords, customerCoords]
 
       setDistanceMeters(response.distanceMeters)
       setDurationSeconds(response.durationSeconds)
@@ -582,9 +596,14 @@ export function OrderStatusScreen({
     return () => {
       isMounted = false
     }
-  }, [fitRouteToMap])
+  }, [fitRouteToMap, restaurantCoords, customerCoords])
 
+  // 1. Simulation timer effect for mock ordering (without backend credentials)
   useEffect(() => {
+    if (accessToken && orderId) {
+      return
+    }
+
     if (routeCoordinates.length < 2) {
       return
     }
@@ -621,7 +640,7 @@ export function OrderStatusScreen({
               useNativeDriver: false,
             } as any)
             .start()
-          }
+        }
       }, 4500),
       setTimeout(() => {
         setDetailedStatus('Picked up')
@@ -644,7 +663,7 @@ export function OrderStatusScreen({
             duration: 900,
             useNativeDriver: false,
           } as any)
-            .start()
+          .start()
       }, 9000),
       setTimeout(() => {
         completionOpacity.setValue(0)
@@ -679,13 +698,207 @@ export function OrderStatusScreen({
       clearSimulationTimers()
     }
   }, [
+    accessToken,
+    orderId,
+    routeCoordinates,
     animateProgressTo,
     clearSimulationTimers,
     completionOpacity,
     completionScale,
     completionTranslateY,
     courierMarker,
-    routeCoordinates,
+  ])
+
+  // 2. Real-time polling from the backend (when order credentials are provided)
+  useEffect(() => {
+    if (!accessToken || !orderId) {
+      return
+    }
+
+    let isActive = true
+    let pollTimer: NodeJS.Timeout
+
+    const poll = async () => {
+      try {
+        const orderRes = await getUserOrder(accessToken, orderId)
+        if (!isActive) return
+
+        if (!orderRes.ok || !orderRes.data.success || !orderRes.data.data) {
+          return
+        }
+
+        const latestOrder = orderRes.data.data
+
+        if (latestOrder.pickupAddress?.latitude && latestOrder.pickupAddress?.longitude) {
+          const lat = Number(latestOrder.pickupAddress.latitude)
+          const lng = Number(latestOrder.pickupAddress.longitude)
+          setRestaurantCoords(prev => {
+            if (prev.latitude === lat && prev.longitude === lng) return prev
+            return { latitude: lat, longitude: lng }
+          })
+        }
+        if (latestOrder.deliveryAddress?.latitude && latestOrder.deliveryAddress?.longitude) {
+          const lat = Number(latestOrder.deliveryAddress.latitude)
+          const lng = Number(latestOrder.deliveryAddress.longitude)
+          setCustomerCoords(prev => {
+            if (prev.latitude === lat && prev.longitude === lng) return prev
+            return { latitude: lat, longitude: lng }
+          })
+        }
+
+        if (latestOrder.deliveryConfirmationCode) {
+          const code = latestOrder.deliveryConfirmationCode
+          setDeliveryCode(prev => {
+            if (prev !== code) {
+              // Trigger push banner animation!
+              setShowPushNotification(true)
+              Animated.spring(pushAnim, {
+                toValue: 50,
+                useNativeDriver: true,
+                tension: 80,
+                friction: 8,
+              }).start()
+
+              // Auto-dismiss after 9 seconds
+              setTimeout(() => {
+                Animated.timing(pushAnim, {
+                  toValue: -200,
+                  duration: 350,
+                  useNativeDriver: true,
+                }).start(() => setShowPushNotification(false))
+              }, 9000)
+            }
+            return code
+          })
+        }
+
+        const rawStatus = latestOrder.status || 'NEW'
+        if (rawStatus === 'NEW') {
+          void autoAssignOrder(accessToken, orderId)
+        }
+        let mappedStatus: DetailedStatus = 'Order received'
+        let nextMilestone = 1
+
+        if (['NEW', 'ACCEPTED', 'PREPARING', 'READY'].includes(rawStatus)) {
+          mappedStatus = 'Order received'
+          nextMilestone = 1
+        } else if (rawStatus === 'ASSIGNED') {
+          mappedStatus = 'Courier assigned'
+          nextMilestone = 2
+        } else if (rawStatus === 'PICKED_UP') {
+          mappedStatus = 'Picked up'
+          nextMilestone = 2
+        } else if (['IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING'].includes(rawStatus)) {
+          mappedStatus = 'On the way'
+          nextMilestone = 2
+        } else if (rawStatus === 'DELIVERED') {
+          mappedStatus = 'Delivered'
+          nextMilestone = 3
+        }
+
+        setDetailedStatus(mappedStatus)
+        setMilestoneIndex(nextMilestone)
+        animateProgressTo(nextMilestone)
+
+        if (rawStatus === 'DELIVERED') {
+          setIsDeliveryCompleteVisible(prev => {
+            if (!prev) {
+              completionOpacity.setValue(0)
+              completionTranslateY.setValue(24)
+              completionScale.setValue(0.82)
+              Animated.parallel([
+                Animated.timing(completionOpacity, {
+                  toValue: 1,
+                  duration: 260,
+                  easing: Easing.out(Easing.cubic),
+                  useNativeDriver: true,
+                }),
+                Animated.timing(completionTranslateY, {
+                  toValue: 0,
+                  duration: 320,
+                  easing: Easing.out(Easing.cubic),
+                  useNativeDriver: true,
+                }),
+                Animated.spring(completionScale, {
+                  toValue: 1,
+                  friction: 7,
+                  tension: 90,
+                  useNativeDriver: true,
+                }),
+              ]).start()
+            }
+            return true
+          })
+          setDurationSeconds(0)
+          setCourierId(null)
+          setRealCourierLocation(null)
+          return
+        }
+
+        const assignRes = await getOrderAssignment(accessToken, orderId)
+        if (!isActive) return
+
+        if (assignRes.ok && assignRes.data.success && assignRes.data.data) {
+          const content = assignRes.data.data.content
+          if (content && content.length > 0) {
+            const activeAssign = content[0]
+            if (activeAssign.courierId) {
+              setCourierId(activeAssign.courierId)
+
+              const locRes = await getCourierLocation(accessToken, activeAssign.courierId)
+              if (!isActive) return
+
+              if (locRes.ok && locRes.data.success && locRes.data.data) {
+                const locData = locRes.data.data
+                setRealCourierLocation(prev => {
+                  if (prev && prev.latitude === locData.latitude && prev.longitude === locData.longitude) return prev
+                  return {
+                    latitude: locData.latitude,
+                    longitude: locData.longitude,
+                  }
+                })
+                setCourierOnline(locData.isOnline)
+
+                courierMarker
+                  .timing({
+                    latitude: locData.latitude,
+                    longitude: locData.longitude,
+                    latitudeDelta: 0,
+                    longitudeDelta: 0,
+                    duration: 1000,
+                    useNativeDriver: false,
+                  } as any)
+                  .start()
+              }
+            }
+          } else {
+            setCourierId(null)
+            setRealCourierLocation(null)
+          }
+        }
+      } catch (err) {
+        console.log('Error in food tracking poll:', err)
+      } finally {
+        if (isActive) {
+          pollTimer = setTimeout(() => void poll(), 5000)
+        }
+      }
+    }
+
+    void poll()
+
+    return () => {
+      isActive = false
+      clearTimeout(pollTimer)
+    }
+  }, [
+    accessToken,
+    orderId,
+    animateProgressTo,
+    completionOpacity,
+    completionScale,
+    completionTranslateY,
+    courierMarker,
   ])
 
   const toggleSheet = () => {
@@ -1547,6 +1760,22 @@ export function OrderStatusScreen({
 
   return (
     <View style={styles.screen}>
+      {showPushNotification && (
+        <Animated.View style={[styles.pushBanner, { transform: [{ translateY: pushAnim }] }]}>
+          <View style={styles.pushHeader}>
+            <View style={styles.pushIconContainer}>
+              <Feather name="shield" size={12} color="#fff" />
+            </View>
+            <Text style={styles.pushAppName}>SwiftDeliver</Text>
+            <Text style={styles.pushTime}>now</Text>
+          </View>
+          <Text style={styles.pushTitle}>Код подтверждения доставки</Text>
+          <Text style={styles.pushBody}>
+            Ваш секретный код доставки: <Text style={styles.pushCodeHighlight}>{deliveryCode}</Text>. Пожалуйста, сообщите его курьеру для подтверждения заказа.
+          </Text>
+        </Animated.View>
+      )}
+
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
@@ -1565,12 +1794,12 @@ export function OrderStatusScreen({
         <MapPolyline coordinates={routeCoordinates} strokeColor="#ffffff" strokeWidth={8} />
         <MapPolyline coordinates={routeCoordinates} strokeColor="#5f98ff" strokeWidth={4} />
 
-        <Marker coordinate={restaurantLocation} anchor={{ x: 0.5, y: 0.5 }}>
+        <Marker coordinate={restaurantCoords} anchor={{ x: 0.5, y: 0.5 }}>
           <View style={styles.restaurantMarkerHalo} />
           <View style={styles.restaurantMarker} />
         </Marker>
 
-        <Marker coordinate={customerLocation} anchor={{ x: 0.5, y: 0.5 }}>
+        <Marker coordinate={customerCoords} anchor={{ x: 0.5, y: 0.5 }}>
           <View style={styles.customerMarkerOuter}>
             <View style={styles.customerMarkerInner} />
           </View>
@@ -1764,6 +1993,8 @@ export function OrderStatusScreen({
                 </Pressable>
               </View>
 
+
+
               <View style={styles.bottomActions}>
                 <Pressable
                   accessibilityRole="button"
@@ -1834,6 +2065,63 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#f7f9fb',
+  },
+  pushBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 16,
+    right: 16,
+    backgroundColor: 'rgba(25, 28, 38, 0.95)',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 9999,
+  },
+  pushHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  pushIconContainer: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: '#ff7a59',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  pushAppName: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  pushTime: {
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: 11,
+  },
+  pushTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  pushBody: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  pushCodeHighlight: {
+    color: '#ff7a59',
+    fontWeight: '800',
+    fontSize: 15,
   },
   headerBackground: {
     position: 'absolute',
@@ -3065,5 +3353,51 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     letterSpacing: 0.45,
     fontWeight: '700',
+  },
+  otpCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+    marginHorizontal: 4,
+    marginBottom: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    backgroundColor: '#fff5f3',
+    borderWidth: 1.5,
+    borderColor: '#ffdad2',
+  },
+  otpIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffe6e1',
+    flexShrink: 0,
+  },
+  otpCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  otpLabel: {
+    color: '#a7391e',
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+  },
+  otpCode: {
+    color: '#191c1e',
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '900',
+    letterSpacing: 6,
+  },
+  otpHint: {
+    color: '#58423c',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '400',
   },
 })

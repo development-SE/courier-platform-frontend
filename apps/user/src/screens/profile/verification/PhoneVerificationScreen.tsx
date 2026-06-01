@@ -1,22 +1,50 @@
 import { useState } from 'react'
 import { Feather } from '@expo/vector-icons'
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import PhoneIllustration from '../../../../assets/phone.svg'
 import { styles } from '../styles'
 
 type PhoneVerificationScreenProps = {
+  phone?: string
   onBackPress: () => void
+  onSave: (phone: string) => Promise<{ ok: boolean; message?: string }>
   safeBottom: number
   safeTop: number
 }
 
 export function PhoneVerificationScreen({
+  phone,
   onBackPress,
+  onSave,
   safeBottom,
   safeTop,
 }: PhoneVerificationScreenProps) {
-  const [countryCode, setCountryCode] = useState('+7')
-  const [phoneNumber, setPhoneNumber] = useState('708 557 53 33')
+  const existingPhone = phone ?? ''
+  const initialCode = existingPhone.startsWith('+') ? existingPhone.slice(0, existingPhone.indexOf(' ') > 0 ? existingPhone.indexOf(' ') : 2) : '+7'
+  const initialNumber = existingPhone.startsWith('+') ? existingPhone.slice(existingPhone.indexOf(' ') > 0 ? existingPhone.indexOf(' ') + 1 : 2).trim() : existingPhone
+
+  const [countryCode, setCountryCode] = useState(initialCode)
+  const [phoneNumber, setPhoneNumber] = useState(initialNumber || '708 557 53 33')
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    const fullPhone = `${countryCode.trim()}${phoneNumber.replace(/\s/g, '')}`
+
+    if (fullPhone === existingPhone?.replace(/\s/g, '')) {
+      onBackPress()
+      return
+    }
+
+    setSaving(true)
+    const result = await onSave(fullPhone)
+    setSaving(false)
+
+    if (result.ok) {
+      onBackPress()
+    } else {
+      Alert.alert('Error', result.message ?? 'Failed to update phone')
+    }
+  }
 
   return (
     <View style={styles.nameScreen}>
@@ -49,6 +77,7 @@ export function PhoneVerificationScreen({
               placeholder="+7"
               placeholderTextColor="rgba(0, 0, 0, 0.35)"
               style={styles.countryInput}
+              editable={!saving}
             />
           </View>
 
@@ -60,6 +89,7 @@ export function PhoneVerificationScreen({
             placeholder="708 557 53 33"
             placeholderTextColor="rgba(0, 0, 0, 0.35)"
             style={styles.phoneInput}
+            editable={!saving}
           />
         </View>
 
@@ -69,8 +99,12 @@ export function PhoneVerificationScreen({
       </ScrollView>
 
       <View style={[styles.nameSaveArea, { paddingBottom: Math.max(24, safeBottom + 16) }]}>
-        <Pressable style={styles.nameSaveButton} onPress={onBackPress}>
-          <Text allowFontScaling={false} style={styles.nameSaveText}>Save</Text>
+        <Pressable style={[styles.nameSaveButton, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
+          {saving ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text allowFontScaling={false} style={styles.nameSaveText}>Save</Text>
+          )}
         </Pressable>
       </View>
     </View>

@@ -16,6 +16,7 @@ import {
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getUserOrder, type UserOrder, type UserOrderAddress } from '../../data/ordersApi'
+import { getOrderAssignment, getCourierLocation, autoAssignOrder } from '../../data/logisticsApi'
 
 type UserOrderTrackingScreenProps = {
   accessToken?: string
@@ -52,8 +53,8 @@ const SERVICE_TYPE_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
 }
 
-const ALMATY_CENTER = { latitude: 43.238949, longitude: 76.889709 }
-const ALMATY_DELIVERY_FALLBACK = { latitude: 43.245382, longitude: 76.927421 }
+const ASTANA_CENTER = { latitude: 51.128200, longitude: 71.430400 }
+const ASTANA_DELIVERY_FALLBACK = { latitude: 51.140000, longitude: 71.440000 }
 
 function formatAddress(address?: UserOrderAddress) {
   if (!address) return 'Address unavailable'
@@ -208,57 +209,110 @@ export function UserOrderTrackingScreen({
   })
   const [routeCoords, setRouteCoords] = useState<Array<{ latitude: number; longitude: number }>>([])
 
+  const [courierId, setCourierId] = useState<string | null>(null)
+  const [realCourierLocation, setRealCourierLocation] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [courierOnline, setCourierOnline] = useState<boolean>(false)
+
   useEffect(() => {
     setOrder(initialOrder)
   }, [initialOrder])
 
   useEffect(() => {
-    let isActive = true
-
-    const loadOrder = async () => {
-      if (!accessToken || initialOrder.serviceType === 'FOOD') {
-        setIsLoading(false)
-        return
-      }
-
-      setIsLoading(true)
-      const response = await getUserOrder(accessToken, initialOrder.orderId)
-
-      if (!isActive) {
-        return
-      }
-
-      if (!response.ok) {
-        if (response.error.status === 401) {
-          onUnauthorized?.()
-          return
-        }
-
-        setIsLoading(false)
-        return
-      }
-
-      if (!response.data.success) {
-        if (response.data.error?.code === 'UNAUTHORIZED') {
-          onUnauthorized?.()
-          return
-        }
-
-        setIsLoading(false)
-        return
-      }
-
-      setOrder(currentOrder => ({
-        ...currentOrder,
-        ...(response.data.data ?? {}),
-      }))
+    if (!accessToken || initialOrder.serviceType === 'FOOD') {
       setIsLoading(false)
+      return
     }
 
-    void loadOrder()
+    let isActive = true
+    let pollTimer: NodeJS.Timeout
+
+    const poll = async (isInitial = false) => {
+      if (isInitial) setIsLoading(true)
+      try {
+        // 1. Fetch latest order state from order-service
+        const orderRes = await getUserOrder(accessToken, initialOrder.orderId)
+        if (!isActive) return
+
+        if (!orderRes.ok) {
+          if (orderRes.error.status === 401) {
+            onUnauthorized?.()
+            return
+          }
+          return
+        }
+
+        if (!orderRes.data.success) {
+          if (orderRes.data.error?.code === 'UNAUTHORIZED') {
+            onUnauthorized?.()
+            return
+          }
+          return
+        }
+
+        const latestOrder = orderRes.data.data
+        if (latestOrder) {
+          setOrder(prev => ({
+            ...prev,
+            ...latestOrder
+          }))
+          
+          if (latestOrder.status === 'NEW') {
+            void autoAssignOrder(accessToken, initialOrder.orderId)
+          }
+        }
+
+        // Check if order status is terminal
+        const isTerminal = ['DELIVERED', 'CANCELLED', 'REJECTED'].includes(latestOrder?.status || '')
+        if (isTerminal) {
+          setCourierId(null)
+          setRealCourierLocation(null)
+          return
+        }
+
+        // 2. Fetch active assignment from logistics-service
+        const assignRes = await getOrderAssignment(accessToken, initialOrder.orderId)
+        if (!isActive) return
+
+        if (assignRes.ok && assignRes.data.success && assignRes.data.data) {
+          const content = assignRes.data.data.content
+          if (content && content.length > 0) {
+            const activeAssign = content[0]
+            if (activeAssign.courierId) {
+              setCourierId(activeAssign.courierId)
+              
+              // 3. Fetch courier location
+              const locRes = await getCourierLocation(accessToken, activeAssign.courierId)
+              if (!isActive) return
+
+              if (locRes.ok && locRes.data.success && locRes.data.data) {
+                const locData = locRes.data.data
+                setRealCourierLocation({
+                  latitude: locData.latitude,
+                  longitude: locData.longitude
+                })
+                setCourierOnline(locData.isOnline)
+              }
+            }
+          } else {
+            setCourierId(null)
+            setRealCourierLocation(null)
+          }
+        }
+      } catch (err) {
+        console.log('Error in tracking poll:', err)
+      } finally {
+        if (isInitial) setIsLoading(false)
+        if (isActive) {
+          pollTimer = setTimeout(() => void poll(), 5000) // Poll every 5 seconds
+        }
+      }
+    }
+
+    void poll(true)
 
     return () => {
       isActive = false
+      clearTimeout(pollTimer)
     }
   }, [accessToken, initialOrder.orderId, initialOrder.serviceType, onUnauthorized])
 
@@ -309,8 +363,8 @@ export function UserOrderTrackingScreen({
       }
 
       setResolvedCoords({
-        pickup: directPickup || cachedPickup || geocodedPickup || ALMATY_CENTER,
-        delivery: directDelivery || cachedDelivery || geocodedDelivery || ALMATY_DELIVERY_FALLBACK,
+        pickup: directPickup || cachedPickup || geocodedPickup || ASTANA_CENTER,
+        delivery: directDelivery || cachedDelivery || geocodedDelivery || ASTANA_DELIVERY_FALLBACK,
       })
     }
 
@@ -450,19 +504,11 @@ export function UserOrderTrackingScreen({
   }, [resolvedCoords.delivery, resolvedCoords.pickup, routeCoords])
 
   const courierLocation = useMemo(() => {
-    if (!resolvedCoords.pickup || !resolvedCoords.delivery) {
-      return null
-    }
-
     if (!['ASSIGNED', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING'].includes(order.status)) {
       return null
     }
-
-    return {
-      latitude: (resolvedCoords.pickup.latitude + resolvedCoords.delivery.latitude) / 2,
-      longitude: (resolvedCoords.pickup.longitude + resolvedCoords.delivery.longitude) / 2,
-    }
-  }, [order.status, resolvedCoords.delivery, resolvedCoords.pickup])
+    return realCourierLocation
+  }, [order.status, realCourierLocation])
 
   const itemNames = (order.items ?? [])
     .map(item => item.name?.trim())
@@ -492,8 +538,8 @@ export function UserOrderTrackingScreen({
         style={styles.map}
         provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         initialRegion={{
-          latitude: ALMATY_CENTER.latitude,
-          longitude: ALMATY_CENTER.longitude,
+          latitude: ASTANA_CENTER.latitude,
+          longitude: ASTANA_CENTER.longitude,
           latitudeDelta: 0.04,
           longitudeDelta: 0.04,
         }}

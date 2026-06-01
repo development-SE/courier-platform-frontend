@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Alert,
   Image,
   ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native'
 import { Feather, FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { createMockFoodOrder, type MockFoodCheckoutItem } from '../../data/mockFoodOrders'
+import type { MockFoodCheckoutItem } from '../../data/mockFoodOrders'
 import type { UserOrder } from '../../data/ordersApi'
 import { RestaurantCartScreen } from './RestaurantCartScreen'
 import { OrderAcceptingScreen } from './OrderAcceptingScreen'
@@ -18,15 +20,16 @@ import { OrderStatusScreen } from './OrderStatusScreen'
 
 type RestaurantDetailScreenProps = {
   initialScreen?: 'menu' | 'cart'
+  accessToken?: string
   cartItems: Record<string, number>
   onAddItem: (itemId: string) => void
   onRemoveItem: (itemId: string) => void
   onClearCart: () => void
-  onMockFoodOrderPlaced?: (params: {
+  onFoodOrderPlaced?: (params: {
     restaurantName: string
     total: number
     items: MockFoodCheckoutItem[]
-  }) => UserOrder
+  }) => Promise<UserOrder>
   onBackPress?: () => void
 }
 
@@ -70,19 +73,125 @@ const menuItems: MenuItem[] = [
   },
 ]
 
+const mockReviews = [
+  {
+    id: 'r1',
+    userName: 'Alexandra M.',
+    userAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80',
+    rating: 5,
+    date: 'Yesterday',
+    text: 'The Margherita Bliss was absolute perfection! Crust was incredibly thin and crispy, and the fresh basil added such a lovely fragrance. Packing was neat and arrived boiling hot!',
+    helpfulCount: 14,
+    restaurantReply: 'Thank you so much for your kind words, Alexandra! We are thrilled to hear you loved the pizza. Looking forward to your next order!',
+  },
+  {
+    id: 'r2',
+    userName: 'Dmitry K.',
+    userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80',
+    rating: 5,
+    date: '3 days ago',
+    text: 'Truffle Mushroom pizza is a masterpiece. The roasted garlic cream base combined with wild mushrooms is simply out of this world. Delivery was fast too!',
+    helpfulCount: 8,
+  },
+  {
+    id: 'r3',
+    userName: 'Sophia L.',
+    userAvatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=120&q=80',
+    rating: 4,
+    date: '1 week ago',
+    text: 'Extremely delicious, though I wish there was a bit more truffle oil on the Truffle Mushroom pizza. Nonetheless, highly recommend and will order again.',
+    helpfulCount: 3,
+  },
+  {
+    id: 'r4',
+    userName: 'Artem S.',
+    userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80',
+    rating: 5,
+    date: '1 week ago',
+    text: 'Best Italian pizza in town! The ingredients are extremely fresh and the crust is so flavorful. Highly recommend ordering with extra cheese.',
+    helpfulCount: 5,
+  },
+  {
+    id: 'r5',
+    userName: 'Elena V.',
+    userAvatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=120&q=80',
+    rating: 3,
+    date: '2 weeks ago',
+    text: 'Food is great, but delivery was delayed by 15 minutes. Pizza was a bit cold, had to reheat it. Will give them another chance because the flavor is excellent.',
+    helpfulCount: 2,
+  },
+]
+
+const ratingDistribution = [
+  { rating: 5, count: 412, percentage: 78 },
+  { rating: 4, count: 79, percentage: 15 },
+  { rating: 3, count: 21, percentage: 4 },
+  { rating: 2, count: 12, percentage: 2 },
+  { rating: 1, count: 8, percentage: 1 },
+]
+
 export function RestaurantDetailScreen({
   initialScreen = 'menu',
+  accessToken,
   cartItems,
   onAddItem,
   onRemoveItem,
   onClearCart,
-  onMockFoodOrderPlaced,
+  onFoodOrderPlaced,
   onBackPress,
 }: RestaurantDetailScreenProps) {
   const insets = useSafeAreaInsets()
   const [currentScreen, setCurrentScreen] = useState<'menu' | 'cart' | 'accepting' | 'status'>(
     initialScreen,
   )
+  const [menuSearchQuery, setMenuSearchQuery] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('Popular')
+  const [activeTab, setActiveTab] = useState<'menu' | 'reviews' | 'info'>('menu')
+  const [selectedReviewFilter, setSelectedReviewFilter] = useState<'All' | '5 ★' | '4 ★' | '3 ★' | 'Recent'>('All')
+  const [helpfulState, setHelpfulState] = useState<Record<string, boolean>>({})
+
+  const toggleHelpful = (reviewId: string) => {
+    setHelpfulState(prev => ({
+      ...prev,
+      [reviewId]: !prev[reviewId],
+    }))
+  }
+
+  const filteredReviews = useMemo(() => {
+    let list = mockReviews
+    if (selectedReviewFilter === '5 ★') {
+      list = list.filter(r => r.rating === 5)
+    } else if (selectedReviewFilter === '4 ★') {
+      list = list.filter(r => r.rating === 4)
+    } else if (selectedReviewFilter === '3 ★') {
+      list = list.filter(r => r.rating === 3)
+    }
+    return list
+  }, [selectedReviewFilter])
+
+  const filteredMenuItems = useMemo(() => {
+    let items = menuItems
+
+    if (selectedCategory !== 'Popular') {
+      const cat = selectedCategory.toLowerCase()
+      if (cat === 'pizza') {
+        items = items.filter(item => item.id === 'margherita')
+      } else if (cat === 'drinks' || cat === 'desserts') {
+        items = []
+      }
+    }
+
+    if (menuSearchQuery.trim()) {
+      const query = menuSearchQuery.toLowerCase()
+      items = items.filter(
+        item =>
+          item.name.toLowerCase().includes(query) ||
+          item.description.toLowerCase().includes(query)
+      )
+    }
+
+    return items
+  }, [selectedCategory, menuSearchQuery])
   const [placedOrder, setPlacedOrder] = useState<{
     orderId: string
     restaurantName: string
@@ -130,20 +239,9 @@ export function RestaurantDetailScreen({
     }
   }, [cartSummary.count, currentScreen])
 
-  const handleCheckout = () => {
-    const fallbackOrder = createMockFoodOrder({
-      restaurantName: 'The Artisan Crust',
-      total: checkoutTotal,
-      items: selectedCartItems.map(item => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-      })),
-    })
-
-    const order =
-      onMockFoodOrderPlaced?.({
+  const handleCheckout = async () => {
+    try {
+      const order = await onFoodOrderPlaced?.({
         restaurantName: 'The Artisan Crust',
         total: checkoutTotal,
         items: selectedCartItems.map(item => ({
@@ -152,22 +250,20 @@ export function RestaurantDetailScreen({
           price: item.price,
           quantity: item.quantity,
         })),
-      }) ?? fallbackOrder
-
-    setPlacedOrder({
-      orderId: order.orderId,
-      restaurantName: 'The Artisan Crust',
-      total: checkoutTotal,
-      orderNumber: order.orderId.slice(-6).toUpperCase(),
-      items: selectedCartItems.map(item => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        image: item.image,
-        quantity: item.quantity,
-      })),
-    })
-    setCurrentScreen('accepting')
+      })
+      if (order) {
+        setPlacedOrder({
+          orderId: order.orderId,
+          restaurantName: 'The Artisan Crust',
+          total: checkoutTotal,
+          orderNumber: order.orderId.slice(-6).toUpperCase(),
+          items: selectedCartItems,
+        })
+        setCurrentScreen('accepting')
+      }
+    } catch (error) {
+      Alert.alert('Checkout Error', error instanceof Error ? error.message : 'Unknown checkout error')
+    }
   }
 
   const handleAcceptingComplete = () => {
@@ -189,6 +285,8 @@ export function RestaurantDetailScreen({
   if (currentScreen === 'status') {
     return (
       <OrderStatusScreen
+        accessToken={accessToken}
+        orderId={placedOrder?.orderId}
         restaurantName={placedOrder?.restaurantName ?? 'The Artisan Crust'}
         orderNumber={placedOrder?.orderNumber ?? '4412'}
         total={placedOrder?.total ?? checkoutTotal}
@@ -283,103 +381,481 @@ export function RestaurantDetailScreen({
           </View>
 
           <View style={styles.tabsRow}>
-            <Pressable style={styles.tabActive}>
-              <Text allowFontScaling={false} style={styles.tabActiveText}>
+            <Pressable
+              onPress={() => setActiveTab('menu')}
+              style={activeTab === 'menu' ? styles.tabActive : styles.tab}
+            >
+              <Text allowFontScaling={false} style={activeTab === 'menu' ? styles.tabActiveText : styles.tabText}>
                 Menu
               </Text>
-              <View style={styles.tabIndicator} />
+              {activeTab === 'menu' && <View style={styles.tabIndicator} />}
             </Pressable>
-            <Pressable style={styles.tab}>
-              <Text allowFontScaling={false} style={styles.tabText}>
+            <Pressable
+              onPress={() => setActiveTab('reviews')}
+              style={activeTab === 'reviews' ? styles.tabActive : styles.tab}
+            >
+              <Text allowFontScaling={false} style={activeTab === 'reviews' ? styles.tabActiveText : styles.tabText}>
                 Reviews
               </Text>
+              {activeTab === 'reviews' && <View style={styles.tabIndicator} />}
             </Pressable>
-            <Pressable style={styles.tab}>
-              <Text allowFontScaling={false} style={styles.tabText}>
+            <Pressable
+              onPress={() => setActiveTab('info')}
+              style={activeTab === 'info' ? styles.tabActive : styles.tab}
+            >
+              <Text allowFontScaling={false} style={activeTab === 'info' ? styles.tabActiveText : styles.tabText}>
                 Info
               </Text>
+              {activeTab === 'info' && <View style={styles.tabIndicator} />}
             </Pressable>
           </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesRow}
-          >
-            {categories.map((category, index) => (
-              <Pressable
-                key={category}
-                style={[styles.categoryChip, index === 0 && styles.categoryChipActive]}
+          {/* Menu Tab Content */}
+          {activeTab === 'menu' && (
+            <>
+              {/* Premium inline Search Bar по центру */}
+              <View style={styles.searchContainer}>
+                <View style={styles.searchBox}>
+                  <Feather name="search" size={18} color="#8b716b" style={styles.searchIcon} />
+                  <TextInput
+                    allowFontScaling={false}
+                    value={menuSearchQuery}
+                    onChangeText={setMenuSearchQuery}
+                    placeholder="Search in menu"
+                    placeholderTextColor="rgba(88, 66, 60, 0.6)"
+                    style={styles.searchInput}
+                  />
+                </View>
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoriesRow}
               >
-                <Text
-                  allowFontScaling={false}
-                  style={[styles.categoryText, index === 0 && styles.categoryTextActive]}
-                >
-                  {category}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-
-          <View style={styles.menuList}>
-            {menuItems.map(item => {
-              const quantity = cartItems[item.id] ?? 0
-
-              return (
-                <View key={item.id} style={styles.menuCard}>
-                  <View style={styles.menuCopy}>
-                    <Text allowFontScaling={false} numberOfLines={1} style={styles.menuTitle}>
-                      {item.name}
-                    </Text>
-                    <Text allowFontScaling={false} numberOfLines={2} style={styles.menuDescription}>
-                      {item.description}
-                    </Text>
-                    <View style={styles.menuBottomRow}>
-                      <Text allowFontScaling={false} style={styles.menuPrice}>
-                        ${item.price.toFixed(2)}
+                {categories.map((category) => {
+                  const isActive = selectedCategory === category
+                  return (
+                    <Pressable
+                      key={category}
+                      onPress={() => setSelectedCategory(category)}
+                      style={[styles.categoryChip, isActive && styles.categoryChipActive]}
+                    >
+                      <Text
+                        allowFontScaling={false}
+                        style={[styles.categoryText, isActive && styles.categoryTextActive]}
+                      >
+                        {category}
                       </Text>
-                      {quantity > 0 ? (
-                        <View style={styles.quantityControls}>
+                    </Pressable>
+                  )
+                })}
+              </ScrollView>
+
+              <View style={styles.menuList}>
+                {filteredMenuItems.map(item => {
+                  const quantity = cartItems[item.id] ?? 0
+
+                  return (
+                    <View key={item.id} style={styles.menuCard}>
+                      <View style={styles.menuCopy}>
+                        <Text allowFontScaling={false} numberOfLines={1} style={styles.menuTitle}>
+                          {item.name}
+                        </Text>
+                        <Text allowFontScaling={false} numberOfLines={2} style={styles.menuDescription}>
+                          {item.description}
+                        </Text>
+                        <View style={styles.menuBottomRow}>
+                          <Text allowFontScaling={false} style={styles.menuPrice}>
+                            ${item.price.toFixed(2)}
+                          </Text>
+                          {quantity > 0 ? (
+                            <View style={styles.quantityControls}>
+                              <Pressable
+                                hitSlop={8}
+                                onPress={() => onRemoveItem(item.id)}
+                                style={[styles.quantityAction, styles.quantityActionSecondary]}
+                              >
+                                <Text allowFontScaling={false} style={styles.quantityActionSecondaryText}>
+                                  -
+                                </Text>
+                              </Pressable>
+
+                              <Text allowFontScaling={false} style={styles.quantityValue}>
+                                {quantity}
+                              </Text>
+
+                              <Pressable
+                                hitSlop={8}
+                                onPress={() => onAddItem(item.id)}
+                                style={[styles.quantityAction, styles.quantityActionPrimary]}
+                              >
+                                <Text allowFontScaling={false} style={styles.quantityActionPrimaryText}>
+                                  +
+                                </Text>
+                              </Pressable>
+                            </View>
+                          ) : (
+                            <Pressable
+                              hitSlop={8}
+                              onPress={() => onAddItem(item.id)}
+                              style={styles.addMenuButton}
+                            >
+                              <Feather name="plus" size={16} color="#191c1e" />
+                            </Pressable>
+                          )}
+                        </View>
+                      </View>
+                      <Image source={{ uri: item.image }} resizeMode="cover" style={styles.menuImage as any} />
+                    </View>
+                  )
+                })}
+              </View>
+            </>
+          )}
+
+          {/* Reviews Tab Content */}
+          {activeTab === 'reviews' && (
+            <View style={styles.tabContentContainer}>
+              {/* Overall rating card */}
+              <View style={styles.reviewsSummaryCard}>
+                <View style={styles.summaryLeft}>
+                  <Text allowFontScaling={false} style={styles.summaryRatingScore}>
+                    4.8
+                  </Text>
+                  <View style={styles.starsRow}>
+                    <Ionicons name="star" size={14} color="#ff7a59" />
+                    <Ionicons name="star" size={14} color="#ff7a59" />
+                    <Ionicons name="star" size={14} color="#ff7a59" />
+                    <Ionicons name="star" size={14} color="#ff7a59" />
+                    <Ionicons name="star-half" size={14} color="#ff7a59" />
+                  </View>
+                  <Text allowFontScaling={false} style={styles.summaryCountText}>
+                    Based on{'\n'}532 reviews
+                  </Text>
+                </View>
+
+                <View style={styles.summaryDivider} />
+
+                <View style={styles.summaryRight}>
+                  {ratingDistribution.map((item) => (
+                    <View key={item.rating} style={styles.distributionRow}>
+                      <Text allowFontScaling={false} style={styles.distributionStarLabel}>
+                        {item.rating}★
+                      </Text>
+                      <View style={styles.progressBarTrack}>
+                        <View style={[styles.progressBarFill, { width: `${item.percentage}%` }]} />
+                      </View>
+                      <Text allowFontScaling={false} style={styles.distributionPercentage}>
+                        {item.percentage}%
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+
+              {/* Filter chips for Reviews */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.reviewsFilterRow}
+              >
+                {(['All', '5 ★', '4 ★', '3 ★', 'Recent'] as const).map((filter) => {
+                  const isActive = selectedReviewFilter === filter
+                  return (
+                    <Pressable
+                      key={filter}
+                      onPress={() => setSelectedReviewFilter(filter)}
+                      style={[styles.reviewFilterChip, isActive && styles.reviewFilterChipActive]}
+                    >
+                      <Text
+                        allowFontScaling={false}
+                        style={[styles.reviewFilterText, isActive && styles.reviewFilterTextActive]}
+                      >
+                        {filter}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </ScrollView>
+
+              {/* Reviews List */}
+              <View style={styles.reviewsList}>
+                {filteredReviews.length === 0 ? (
+                  <View style={styles.emptyReviewsContainer}>
+                    <Feather name="message-square" size={32} color="#eceef0" />
+                    <Text allowFontScaling={false} style={styles.emptyReviewsText}>
+                      No reviews matching this rating filter.
+                    </Text>
+                  </View>
+                ) : (
+                  filteredReviews.map((review) => {
+                    const isHelpful = helpfulState[review.id] ?? false
+                    return (
+                      <View key={review.id} style={styles.reviewCard}>
+                        {/* Header row: Avatar, Name, Stars, Date */}
+                        <View style={styles.reviewHeaderRow}>
+                          <Image source={{ uri: review.userAvatar }} style={styles.reviewerAvatar as any} />
+                          <View style={styles.reviewerInfo}>
+                            <Text allowFontScaling={false} style={styles.reviewerName}>
+                              {review.userName}
+                            </Text>
+                            <View style={styles.reviewMetaRow}>
+                              <View style={styles.reviewStars}>
+                                {Array.from({ length: 5 }).map((_, index) => (
+                                  <Ionicons
+                                    key={index}
+                                    name={index < review.rating ? 'star' : 'star-outline'}
+                                    size={12}
+                                    color="#ff7a59"
+                                    style={{ marginRight: 2 }}
+                                  />
+                                ))}
+                              </View>
+                              <View style={styles.reviewDot} />
+                              <Text allowFontScaling={false} style={styles.reviewDate}>
+                                {review.date}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+
+                        {/* Review Text */}
+                        <Text allowFontScaling={false} style={styles.reviewTextBody}>
+                          {review.text}
+                        </Text>
+
+                        {/* Restaurant Reply if exists */}
+                        {review.restaurantReply && (
+                          <View style={styles.replyBubble}>
+                            <View style={styles.replyHeader}>
+                              <View style={styles.replyAvatarBox}>
+                                <MaterialCommunityIcons name="storefront-outline" size={14} color="#701500" />
+                              </View>
+                              <Text allowFontScaling={false} style={styles.replyTitle}>
+                                Response from The Artisan Crust
+                              </Text>
+                            </View>
+                            <Text allowFontScaling={false} style={styles.replyTextBody}>
+                              {review.restaurantReply}
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* Review Footer Actions */}
+                        <View style={styles.reviewFooter}>
                           <Pressable
-                            hitSlop={8}
-                            onPress={() => onRemoveItem(item.id)}
-                            style={[styles.quantityAction, styles.quantityActionSecondary]}
+                            onPress={() => toggleHelpful(review.id)}
+                            style={[styles.helpfulButton, isHelpful && styles.helpfulButtonActive]}
                           >
-                            <Text allowFontScaling={false} style={styles.quantityActionSecondaryText}>
-                              -
+                            <Feather
+                              name="thumbs-up"
+                              size={13}
+                              color={isHelpful ? '#701500' : '#8b716b'}
+                            />
+                            <Text
+                              allowFontScaling={false}
+                              style={[styles.helpfulText, isHelpful && styles.helpfulTextActive]}
+                            >
+                              Helpful ({review.helpfulCount + (isHelpful ? 1 : 0)})
                             </Text>
                           </Pressable>
 
-                          <Text allowFontScaling={false} style={styles.quantityValue}>
-                            {quantity}
-                          </Text>
-
                           <Pressable
-                            hitSlop={8}
-                            onPress={() => onAddItem(item.id)}
-                            style={[styles.quantityAction, styles.quantityActionPrimary]}
+                            onPress={() => Alert.alert('Reply', 'Replies are currently disabled.')}
+                            style={styles.replyButton}
                           >
-                            <Text allowFontScaling={false} style={styles.quantityActionPrimaryText}>
-                              +
+                            <Feather name="corner-up-left" size={13} color="#8b716b" />
+                            <Text allowFontScaling={false} style={styles.replyButtonText}>
+                              Reply
                             </Text>
                           </Pressable>
                         </View>
-                      ) : (
-                        <Pressable
-                          hitSlop={8}
-                          onPress={() => onAddItem(item.id)}
-                          style={styles.addMenuButton}
-                        >
-                          <Feather name="plus" size={16} color="#191c1e" />
-                        </Pressable>
-                      )}
+                      </View>
+                    )
+                  })
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* Info Tab Content */}
+          {activeTab === 'info' && (
+            <View style={styles.tabContentContainer}>
+              {/* Story Card */}
+              <View style={styles.infoCard}>
+                <View style={styles.infoCardHeader}>
+                  <View style={[styles.infoIconBg, { backgroundColor: '#fde5df' }]}>
+                    <MaterialCommunityIcons name="chef-hat" size={20} color="#a7391e" />
+                  </View>
+                  <Text allowFontScaling={false} style={styles.infoSectionTitle}>
+                    Our Story
+                  </Text>
+                </View>
+                <Text allowFontScaling={false} style={styles.infoStoryText}>
+                  Welcome to The Artisan Crust, where we bring the authentic flavors of traditional Neapolitan pizza straight to your door. Our dough is naturally leavened for 48 hours, resulting in a light, airy, and beautifully charred crust. We source our San Marzano tomatoes, fresh mozzarella di bufala, and extra virgin olive oil directly from Italy. Every pizza is crafted with passion and baked to perfection in our custom wood-fired oven.
+                </Text>
+              </View>
+
+              {/* Hours Card */}
+              <View style={styles.infoCard}>
+                <View style={styles.infoCardHeader}>
+                  <View style={[styles.infoIconBg, { backgroundColor: '#e2f0e2' }]}>
+                    <Feather name="clock" size={18} color="#446744" />
+                  </View>
+                  <View style={styles.infoHoursTitleRow}>
+                    <Text allowFontScaling={false} style={styles.infoSectionTitle}>
+                      Opening Hours
+                    </Text>
+                    <View style={styles.statusBadge}>
+                      <View style={styles.statusDot} />
+                      <Text allowFontScaling={false} style={styles.statusText}>
+                        Open Now
+                      </Text>
                     </View>
                   </View>
-                  <Image source={{ uri: item.image }} resizeMode="cover" style={styles.menuImage} />
                 </View>
-              )
-            })}
-          </View>
+
+                <View style={styles.hoursList}>
+                  <View style={styles.hoursRow}>
+                    <Text allowFontScaling={false} style={styles.hoursDayText}>
+                      Monday - Friday
+                    </Text>
+                    <Text allowFontScaling={false} style={styles.hoursTimeText}>
+                      09:00 - 22:00
+                    </Text>
+                  </View>
+                  <View style={styles.hoursDivider} />
+                  <View style={styles.hoursRow}>
+                    <Text allowFontScaling={false} style={styles.hoursDayText}>
+                      Saturday - Sunday
+                    </Text>
+                    <Text allowFontScaling={false} style={styles.hoursTimeText}>
+                      10:00 - 23:00
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Location & Map Card */}
+              <View style={styles.infoCard}>
+                <View style={styles.infoCardHeader}>
+                  <View style={[styles.infoIconBg, { backgroundColor: '#e3f2fd' }]}>
+                    <Feather name="map-pin" size={18} color="#1e88e5" />
+                  </View>
+                  <Text allowFontScaling={false} style={styles.infoSectionTitle}>
+                    Location & Contact
+                  </Text>
+                </View>
+
+                <View style={styles.contactDetails}>
+                  <View style={styles.contactItem}>
+                    <Feather name="navigation" size={14} color="#58423c" style={{ marginRight: 8 }} />
+                    <Text allowFontScaling={false} style={styles.contactText}>
+                      124 Gourmet Boulevard, Suite A, Food District
+                    </Text>
+                  </View>
+                  <View style={styles.contactItem}>
+                    <Feather name="phone" size={14} color="#58423c" style={{ marginRight: 8 }} />
+                    <Text allowFontScaling={false} style={styles.contactText}>
+                      +1 (555) 019-2834
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Styled Mock Map */}
+                <View style={styles.mockMapContainer}>
+                  <ImageBackground
+                    source={{
+                      uri: 'https://images.unsplash.com/photo-1569336415962-a4bd9f69cd83?auto=format&fit=crop&w=600&q=80',
+                    }}
+                    style={styles.mockMap}
+                  >
+                    <View style={styles.mockMapOverlay}>
+                      <View style={styles.mapPinPulseContainer}>
+                        <View style={styles.mapPinPulse} />
+                        <View style={styles.mapPin}>
+                          <Ionicons name="location" size={24} color="#a7391e" />
+                        </View>
+                      </View>
+                    </View>
+                  </ImageBackground>
+                </View>
+
+                <Pressable
+                  onPress={() => Alert.alert('Maps', 'Opening coordinates in system maps...')}
+                  style={styles.viewMapsButton}
+                >
+                  <Feather name="external-link" size={14} color="#a7391e" />
+                  <Text allowFontScaling={false} style={styles.viewMapsButtonText}>
+                    Get Directions
+                  </Text>
+                </Pressable>
+              </View>
+
+              {/* Standards / Features Grid */}
+              <View style={styles.infoCard}>
+                <View style={styles.infoCardHeader}>
+                  <View style={[styles.infoIconBg, { backgroundColor: '#f3e5f5' }]}>
+                    <Feather name="shield" size={18} color="#8e24aa" />
+                  </View>
+                  <Text allowFontScaling={false} style={styles.infoSectionTitle}>
+                    Our Standards
+                  </Text>
+                </View>
+
+                <View style={styles.standardsGrid}>
+                  <View style={styles.standardItem}>
+                    <View style={styles.standardIconContainer}>
+                      <MaterialCommunityIcons name="leaf" size={20} color="#446744" />
+                    </View>
+                    <Text allowFontScaling={false} style={styles.standardTitle}>
+                      Eco-Packaging
+                    </Text>
+                    <Text allowFontScaling={false} style={styles.standardDesc}>
+                      100% biodegradable
+                    </Text>
+                  </View>
+
+                  <View style={styles.standardItem}>
+                    <View style={styles.standardIconContainer}>
+                      <MaterialCommunityIcons name="shield-check" size={20} color="#2e7d32" />
+                    </View>
+                    <Text allowFontScaling={false} style={styles.standardTitle}>
+                      Hygiene Certified
+                    </Text>
+                    <Text allowFontScaling={false} style={styles.standardDesc}>
+                      A+ sanitation grade
+                    </Text>
+                  </View>
+
+                  <View style={styles.standardItem}>
+                    <View style={styles.standardIconContainer}>
+                      <MaterialCommunityIcons name="truck-fast" size={20} color="#a7391e" />
+                    </View>
+                    <Text allowFontScaling={false} style={styles.standardTitle}>
+                      Contactless
+                    </Text>
+                    <Text allowFontScaling={false} style={styles.standardDesc}>
+                      Safe drop-off delivery
+                    </Text>
+                  </View>
+
+                  <View style={styles.standardItem}>
+                    <View style={styles.standardIconContainer}>
+                      <MaterialCommunityIcons name="food-apple" size={20} color="#ff7a59" />
+                    </View>
+                    <Text allowFontScaling={false} style={styles.standardTitle}>
+                      Fresh Ingredients
+                    </Text>
+                    <Text allowFontScaling={false} style={styles.standardDesc}>
+                      Sourced daily
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -389,10 +865,10 @@ export function RestaurantDetailScreen({
         </Pressable>
 
         <View style={styles.topActions}>
-          <Pressable style={styles.navCircle}>
-            <FontAwesome5 name="heart" solid size={16} color="#a7391e" />
-          </Pressable>
-          <Pressable style={styles.navCircle}>
+          <Pressable
+            onPress={() => Alert.alert('Share', 'Link copied to clipboard!')}
+            style={styles.navCircle}
+          >
             <Feather name="share-2" size={17} color="#191c1e" />
           </Pressable>
         </View>
@@ -553,7 +1029,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   tabText: {
-    color: '#d8dadc',
+    color: '#8a8d90',
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '700',
@@ -794,5 +1270,478 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     letterSpacing: 0.3,
     fontWeight: '800',
+  },
+  searchContainer: {
+    paddingHorizontal: 4,
+    marginVertical: 6,
+  },
+  searchBox: {
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#eceef0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    gap: 10,
+  },
+  searchIcon: {
+    marginTop: 1,
+  },
+  searchInput: {
+    flex: 1,
+    color: '#191C1E',
+    paddingVertical: 6,
+    fontWeight: '500',
+  },
+  tabContentContainer: {
+    gap: 16,
+    marginTop: 4,
+  },
+  reviewsSummaryCard: {
+    padding: 16,
+    borderRadius: 24,
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    shadowColor: '#191c1e',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.06,
+    shadowRadius: 24,
+    elevation: 2,
+  },
+  summaryLeft: {
+    flex: 1.1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingRight: 6,
+  },
+  summaryRatingScore: {
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '800',
+    color: '#191c1e',
+  },
+  starsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 4,
+    gap: 2,
+  },
+  summaryCountText: {
+    fontSize: 10,
+    lineHeight: 13,
+    color: '#8b716b',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  summaryDivider: {
+    width: 1,
+    height: '75%',
+    backgroundColor: '#eceef0',
+    marginHorizontal: 4,
+  },
+  summaryRight: {
+    flex: 1.9,
+    gap: 5,
+    justifyContent: 'center',
+    paddingLeft: 8,
+  },
+  distributionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  distributionStarLabel: {
+    width: 22,
+    fontSize: 10,
+    lineHeight: 14,
+    color: '#58423c',
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  progressBarTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#eceef0',
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#ff7a59',
+  },
+  distributionPercentage: {
+    width: 26,
+    fontSize: 10,
+    lineHeight: 14,
+    color: '#8b716b',
+    fontWeight: '600',
+    textAlign: 'right',
+  },
+  reviewsFilterRow: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  reviewFilterChip: {
+    height: 32,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    shadowColor: '#191c1e',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 1,
+  },
+  reviewFilterChipActive: {
+    backgroundColor: '#ff7a59',
+  },
+  reviewFilterText: {
+    color: '#58423c',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+  reviewFilterTextActive: {
+    color: '#701500',
+  },
+  reviewsList: {
+    gap: 14,
+  },
+  reviewCard: {
+    padding: 16,
+    borderRadius: 24,
+    backgroundColor: '#ffffff',
+    shadowColor: '#191c1e',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.04,
+    shadowRadius: 20,
+    elevation: 2,
+    gap: 12,
+  },
+  reviewHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  reviewerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#eceef0',
+  },
+  reviewerInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  reviewerName: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '800',
+    color: '#191c1e',
+  },
+  reviewMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  reviewStars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reviewDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: '#d8dadc',
+  },
+  reviewDate: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#8b716b',
+    fontWeight: '600',
+  },
+  reviewTextBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#191c1e',
+    fontWeight: '400',
+  },
+  replyBubble: {
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: '#f7f9fb',
+    gap: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ff7a59',
+  },
+  replyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  replyAvatarBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 122, 89, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  replyTitle: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+    color: '#701500',
+  },
+  replyTextBody: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#58423c',
+    fontWeight: '400',
+  },
+  reviewFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f7f9fb',
+    paddingTop: 10,
+  },
+  helpfulButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+  },
+  helpfulButtonActive: {
+    backgroundColor: 'rgba(255, 122, 89, 0.12)',
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  helpfulText: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: '#8b716b',
+    fontWeight: '700',
+  },
+  helpfulTextActive: {
+    color: '#701500',
+  },
+  replyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+  },
+  replyButtonText: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: '#8b716b',
+    fontWeight: '700',
+  },
+  emptyReviewsContainer: {
+    paddingVertical: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  emptyReviewsText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#8b716b',
+    textAlign: 'center',
+  },
+  infoCard: {
+    padding: 18,
+    borderRadius: 24,
+    backgroundColor: '#ffffff',
+    shadowColor: '#191c1e',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.04,
+    shadowRadius: 20,
+    elevation: 2,
+    gap: 14,
+  },
+  infoCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  infoIconBg: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoSectionTitle: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '800',
+    color: '#191c1e',
+  },
+  infoHoursTitleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  infoStoryText: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#58423c',
+    fontWeight: '400',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(68, 103, 68, 0.12)',
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#446744',
+  },
+  statusText: {
+    fontSize: 10,
+    lineHeight: 14,
+    color: '#446744',
+    fontWeight: '800',
+  },
+  hoursList: {
+    gap: 8,
+  },
+  hoursRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  hoursDayText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#58423c',
+    fontWeight: '500',
+  },
+  hoursTimeText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#191c1e',
+    fontWeight: '700',
+  },
+  hoursDivider: {
+    height: 1,
+    backgroundColor: '#f7f9fb',
+  },
+  contactDetails: {
+    gap: 10,
+  },
+  contactItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  contactText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#58423c',
+    fontWeight: '500',
+    flex: 1,
+  },
+  mockMapContainer: {
+    height: 150,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#eceef0',
+    marginTop: 4,
+  },
+  mockMap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mockMapOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(25, 28, 30, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mapPinPulseContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mapPinPulse: {
+    position: 'absolute',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(167, 57, 30, 0.25)',
+  },
+  mapPin: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewMapsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(167, 57, 30, 0.15)',
+    borderStyle: 'solid',
+  },
+  viewMapsButtonText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#a7391e',
+    fontWeight: '700',
+  },
+  standardsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    justifyContent: 'space-between',
+  },
+  standardItem: {
+    width: '48%',
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: '#f7f9fb',
+    gap: 4,
+  },
+  standardIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#191c1e',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  standardTitle: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+    color: '#191c1e',
+    marginTop: 4,
+  },
+  standardDesc: {
+    fontSize: 10,
+    lineHeight: 14,
+    color: '#8b716b',
+    fontWeight: '500',
   },
 })

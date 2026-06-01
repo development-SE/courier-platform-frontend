@@ -103,6 +103,9 @@ type UserHomeScreenProps = {
   onRestaurantPress?: () => void
   onSearchPress?: () => void
   onParcelsPress?: () => void
+  onFoodPress?: () => void
+  onGroceriesPress?: () => void
+  onPharmacyPress?: () => void
   onSignOut?: () => void
 }
 
@@ -116,6 +119,9 @@ export function UserHomeScreen({
   onRestaurantPress,
   onSearchPress,
   onParcelsPress,
+  onFoodPress,
+  onGroceriesPress,
+  onPharmacyPress,
 }: UserHomeScreenProps) {
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
@@ -232,7 +238,17 @@ export function UserHomeScreen({
               <Pressable
                 key={category.label}
                 style={styles.categoryItem}
-                onPress={category.label === 'Parcels' ? onParcelsPress : undefined}
+                onPress={
+                  category.label === 'Parcels'
+                    ? onParcelsPress
+                    : category.label === 'Food'
+                    ? onFoodPress
+                    : category.label === 'Groceries'
+                    ? onGroceriesPress
+                    : category.label === 'Pharmacy'
+                    ? onPharmacyPress
+                    : undefined
+                }
               >
                 <View style={[styles.categoryIconBox, { backgroundColor: category.color }]}>
                   {category.icon}

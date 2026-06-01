@@ -6,6 +6,9 @@ export type StoredUserSession = {
   expiresAt?: number
   role: 'CLIENT'
   email: string
+  firstName?: string
+  lastName?: string
+  phone?: string
 }
 
 const SESSION_STORAGE_KEY = 'swiftdeliver.user.session.v1'

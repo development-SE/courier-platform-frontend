@@ -99,14 +99,25 @@ async function getFirebaseMessagingFactory() {
 }
 
 export async function buildDeviceTokenPayload(): Promise<DeviceTokenPayload> {
-  if (!Device.isDevice) {
-    throw new Error('Real push token is available only on a physical device.')
+  let fcmToken = 'dummy-fcm-token-for-simulator'
+  let deviceId = 'dummy-device-id-for-simulator'
+
+  try {
+    deviceId = await getDeviceId()
+    if (Device.isDevice) {
+      fcmToken = await getFirebaseMessagingToken()
+    } else {
+      deviceId = `sim-${Platform.OS}-${deviceId}`
+      fcmToken = `ExponentPushToken[mock-token-${deviceId}]`
+    }
+  } catch (err) {
+    console.log('[Notifications] Falling back to mock token due to:', err)
+    deviceId = `sim-${Platform.OS}-${deviceId}`
+    fcmToken = `ExponentPushToken[mock-token-${deviceId}]`
   }
 
-  const fcmToken = await getFirebaseMessagingToken()
-
   return {
-    deviceId: await getDeviceId(),
+    deviceId,
     platform: getPlatform(),
     provider: 'FCM',
     pushToken: fcmToken,

@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Feather } from '@expo/vector-icons'
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import EmailIllustration from '../../../../assets/email.svg'
 import { styles } from '../styles'
 
 type EmailVerificationScreenProps = {
   email: string
   onBackPress: () => void
+  onSave: (email: string) => Promise<{ ok: boolean; message?: string }>
   safeBottom: number
   safeTop: number
 }
@@ -14,10 +15,36 @@ type EmailVerificationScreenProps = {
 export function EmailVerificationScreen({
   email,
   onBackPress,
+  onSave,
   safeBottom,
   safeTop,
 }: EmailVerificationScreenProps) {
   const [draftEmail, setDraftEmail] = useState(email)
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    const trimmed = draftEmail.trim()
+
+    if (!trimmed) {
+      Alert.alert('Error', 'Email is required')
+      return
+    }
+
+    if (trimmed === email) {
+      onBackPress()
+      return
+    }
+
+    setSaving(true)
+    const result = await onSave(trimmed)
+    setSaving(false)
+
+    if (result.ok) {
+      onBackPress()
+    } else {
+      Alert.alert('Error', result.message ?? 'Failed to update email')
+    }
+  }
 
   return (
     <View style={styles.nameScreen}>
@@ -48,6 +75,7 @@ export function EmailVerificationScreen({
             placeholder="Example@gmail.com"
             placeholderTextColor="rgba(0, 0, 0, 0.35)"
             style={styles.nameInput}
+            editable={!saving}
           />
         </View>
 
@@ -57,8 +85,12 @@ export function EmailVerificationScreen({
       </ScrollView>
 
       <View style={[styles.nameSaveArea, { paddingBottom: Math.max(24, safeBottom + 16) }]}>
-        <Pressable style={styles.nameSaveButton} onPress={onBackPress}>
-          <Text allowFontScaling={false} style={styles.nameSaveText}>Save</Text>
+        <Pressable style={[styles.nameSaveButton, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
+          {saving ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text allowFontScaling={false} style={styles.nameSaveText}>Save</Text>
+          )}
         </Pressable>
       </View>
     </View>

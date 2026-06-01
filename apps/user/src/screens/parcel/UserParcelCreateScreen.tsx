@@ -17,6 +17,7 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { createParcelOrder } from '../../data/ordersApi'
+import { autoAssignOrder } from '../../data/logisticsApi'
 import { UserParcelAddressDetailsModal } from './UserParcelAddressDetailsModal'
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window')
@@ -278,6 +279,14 @@ export function UserParcelCreateScreen({
             deliveryLon: deliveryCoords?.longitude ?? null,
           }),
         )
+      }
+
+      if (createdOrderId) {
+        try {
+          await autoAssignOrder(accessToken, createdOrderId)
+        } catch (assignError) {
+          console.warn('Auto-assignment trigger failed:', assignError)
+        }
       }
 
       Alert.alert('Order created!', 'Courier will be assigned shortly.', [

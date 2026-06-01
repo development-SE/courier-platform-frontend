@@ -131,19 +131,19 @@ export async function createParcelOrder(accessToken: string, params: CreateParce
       ],
       pickupAddress: {
         type: 'COMPANY',
-        city: 'Almaty',
+        city: 'Astana',
         street: params.pickupAddress.trim(),
         house: '1',
-        latitude: params.pickupLat ?? 43.238949,
-        longitude: params.pickupLon ?? 76.889709,
+        latitude: params.pickupLat ?? 51.1282,
+        longitude: params.pickupLon ?? 71.4304,
       },
       deliveryAddress: {
         type: 'USER',
-        city: 'Almaty',
+        city: 'Astana',
         street: params.deliveryAddress.trim(),
         house: '1',
-        latitude: params.deliveryLat ?? 43.245382,
-        longitude: params.deliveryLon ?? 76.927421,
+        latitude: params.deliveryLat ?? 51.1350,
+        longitude: params.deliveryLon ?? 71.4450,
       },
       recipientInfo: {
         name: params.recipientName.trim(),
@@ -158,3 +158,61 @@ export async function createParcelOrder(accessToken: string, params: CreateParce
     },
   })
 }
+
+export type CreateFoodOrderParams = {
+  restaurantName: string
+  total: number
+  items: { id: string; name: string; price: number; quantity: number }[]
+  pickupAddress?: string
+  pickupLat?: number
+  pickupLon?: number
+  deliveryAddress?: string
+  deliveryLat?: number
+  deliveryLon?: number
+}
+
+export async function createFoodOrder(accessToken: string, params: CreateFoodOrderParams) {
+  return apiRequest<ApiResponse<CreateParcelOrderPayload>>('/api/v1/orders', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    json: {
+      serviceType: 'STANDARD',
+      comment: `Food order from ${params.restaurantName}`,
+      items: params.items.map(item => ({
+        itemId: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+      })),
+      pickupAddress: {
+        type: 'COMPANY',
+        city: 'Astana',
+        street: params.pickupAddress?.trim() || 'Mangilik El Ave, 53',
+        house: '53',
+        latitude: params.pickupLat ?? 51.1282,
+        longitude: params.pickupLon ?? 71.4304,
+      },
+      deliveryAddress: {
+        type: 'USER',
+        city: 'Astana',
+        street: params.deliveryAddress?.trim() || 'Uly Dala Ave, 8',
+        house: '8',
+        latitude: params.deliveryLat ?? 51.1350,
+        longitude: params.deliveryLon ?? 71.4450,
+      },
+      recipientInfo: {
+        name: 'Client',
+        surname: null,
+        phone: '+7 777 000 0000',
+      },
+      pickupInfo: {
+        name: params.restaurantName,
+        surname: null,
+        phone: '+7 700 400 7000',
+      },
+    },
+  })
+}
+

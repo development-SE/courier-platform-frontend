@@ -1,4 +1,4 @@
-﻿import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Pressable,
   SafeAreaView,
@@ -6,6 +6,10 @@ import {
   StyleSheet,
   Text,
   View,
+  Modal,
+  TextInput,
+  Alert,
+  ActivityIndicator,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useQuery } from '@tanstack/react-query'
@@ -68,10 +72,15 @@ export function OrderDetailScreen({ navigation, route }: Props) {
     queryFn: fetchDashboardSnapshotFromCore,
   })
 
-  const { activeOrderId, stage, advanceStage, cancelActiveOrder } = useShiftStore(useShallow(state => ({
+  const [isOtpModalVisible, setIsOtpModalVisible] = useState(false)
+  const [otpCode, setOtpCode] = useState('')
+  const [isVerifying, setIsVerifying] = useState(false)
+
+  const { activeOrderId, stage, advanceStage, verifyOTP, cancelActiveOrder } = useShiftStore(useShallow(state => ({
     activeOrderId: state.activeOrderId,
     stage: state.stage,
     advanceStage: state.advanceStage,
+    verifyOTP: state.verifyOTP,
     cancelActiveOrder: state.cancelActiveOrder,
   })))
 
@@ -119,10 +128,32 @@ export function OrderDetailScreen({ navigation, route }: Props) {
   const actionLabel = ACTIVE_STAGE_ACTION_LABEL[stage]
   const courierName = dashboard?.courier ? `${dashboard.courier.name} ${dashboard.courier.lastName}`.trim() : 'Ivan Petrov'
 
-  const handleAdvance = () => {
-    const completed = advanceStage()
-    if (completed) {
+  const handleAdvance = async () => {
+    if (stage === 'delivered') {
+      setIsOtpModalVisible(true)
+    } else {
+      const completed = await advanceStage()
+      if (completed) {
+        navigation.goBack()
+      }
+    }
+  }
+
+  const handleVerifyOTP = async () => {
+    if (!otpCode.trim()) {
+      Alert.alert('Ошибка', 'Пожалуйста, введите код подтверждения')
+      return
+    }
+    setIsVerifying(true)
+    const res = await verifyOTP(otpCode.trim())
+    setIsVerifying(false)
+    if (res.success) {
+      setIsOtpModalVisible(false)
+      setOtpCode('')
+      Alert.alert('Успех', 'Заказ успешно доставлен и подтвержден!')
       navigation.goBack()
+    } else {
+      Alert.alert('Ошибка подтверждения', res.message || 'Неверный код')
     }
   }
 
@@ -293,6 +324,61 @@ export function OrderDetailScreen({ navigation, route }: Props) {
           </Pressable>
         )}
       </View>
+      
+      <Modal
+        visible={isOtpModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsOtpModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Ionicons name="shield-checkmark-outline" size={24} color="#ff9069" />
+              <Text style={styles.modalTitle}>Подтверждение доставки</Text>
+            </View>
+            <Text style={styles.modalText}>
+              Пожалуйста, попросите у клиента 6-значный код подтверждения и введите его ниже для завершения доставки.
+            </Text>
+            
+            <TextInput
+              style={styles.otpInput}
+              placeholder="000000"
+              placeholderTextColor="#6f7485"
+              keyboardType="number-pad"
+              maxLength={6}
+              value={otpCode}
+              onChangeText={setOtpCode}
+              editable={!isVerifying}
+            />
+
+            <View style={styles.modalActions}>
+              <Pressable
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                onPress={() => {
+                  setIsOtpModalVisible(false)
+                  setOtpCode('')
+                }}
+                disabled={isVerifying}
+              >
+                <Text style={styles.modalBtnTextCancel}>Отмена</Text>
+              </Pressable>
+              
+              <Pressable
+                style={[styles.modalBtn, styles.modalBtnConfirm]}
+                onPress={handleVerifyOTP}
+                disabled={isVerifying}
+              >
+                {isVerifying ? (
+                  <ActivityIndicator size="small" color="#2d1b13" />
+                ) : (
+                  <Text style={styles.modalBtnTextConfirm}>Подтвердить</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -695,6 +781,80 @@ const styles = StyleSheet.create({
   },
   emptyBackText: {
     color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#161924',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#2a2f3f',
+    padding: 24,
+    gap: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalTitle: {
+    color: '#f2f3f7',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  modalText: {
+    color: '#9da2af',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  otpInput: {
+    backgroundColor: '#090b10',
+    borderWidth: 1,
+    borderColor: '#ff9069',
+    borderRadius: 14,
+    color: '#ff9069',
+    fontSize: 32,
+    fontWeight: '800',
+    textAlign: 'center',
+    paddingVertical: 14,
+    letterSpacing: 8,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnCancel: {
+    backgroundColor: '#202433',
+    borderWidth: 1,
+    borderColor: '#2a2f3f',
+  },
+  modalBtnConfirm: {
+    backgroundColor: '#ff9069',
+  },
+  modalBtnTextCancel: {
+    color: '#9da2af',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalBtnTextConfirm: {
+    color: '#2d1b13',
     fontSize: 14,
     fontWeight: '700',
   },

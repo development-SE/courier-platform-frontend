@@ -1,11 +1,19 @@
-﻿import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 import { fetchDashboardSnapshotFromCore } from '../../data/coreClient'
 import { STAGE_META, useShiftStore } from '../../store/shiftStore'
+import { useAuthStore } from '../../store/authStore'
+import {
+  listMyAssignments,
+  updateGPSLocation,
+  getOrderDetails,
+  type OrderResponse,
+} from '../../data/logisticsApi'
 
 type ActiveOrderCard = {
   id: string
+  orderId: string
   client: string
   pickupAddress: string
   deliveryAddress: string
@@ -18,28 +26,30 @@ type ActiveOrderCard = {
   payment?: string
 }
 
-function randomIncomingDelay() {
-  return 2500 + Math.floor(Math.random() * 3500)
-}
-
 export function useDashboardModel() {
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard-snapshot'],
     queryFn: fetchDashboardSnapshotFromCore,
   })
 
+  const accessToken = useAuthStore(state => state.accessToken)
+  const courierId = useAuthStore(state => state.courierId)
+
   const {
     status,
     activating,
     showIncoming,
     activeOrderId,
+    activeAssignmentId,
     stage,
     hydrateStatus,
     setStatus,
     setActivating,
     setShowIncoming,
     acceptOrder,
+    rejectOrder,
     advanceStage,
+    verifyOTP,
     cancelActiveOrder,
     endShift,
   } = useShiftStore(useShallow(state => ({
@@ -47,148 +57,236 @@ export function useDashboardModel() {
     activating: state.activating,
     showIncoming: state.showIncoming,
     activeOrderId: state.activeOrderId,
+    activeAssignmentId: state.activeAssignmentId,
     stage: state.stage,
     hydrateStatus: state.hydrateStatus,
     setStatus: state.setStatus,
     setActivating: state.setActivating,
     setShowIncoming: state.setShowIncoming,
     acceptOrder: state.acceptOrder,
+    rejectOrder: state.rejectOrder,
     advanceStage: state.advanceStage,
+    verifyOTP: state.verifyOTP,
     cancelActiveOrder: state.cancelActiveOrder,
     endShift: state.endShift,
   })))
 
-  const activateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const incomingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [realIncoming, setRealIncoming] = useState<any>(null)
+  const [activeOrderDetails, setActiveOrderDetails] = useState<OrderResponse | null>(null)
 
-  const clearIncomingTimer = () => {
-    if (!incomingTimerRef.current) return
-    clearTimeout(incomingTimerRef.current)
-    incomingTimerRef.current = null
-  }
+  // ASTANA default coordinates
+  const [gpsLocation, setGpsLocation] = useState({
+    latitude: 51.1282,
+    longitude: 71.4304,
+  })
 
-  const scheduleIncoming = (delayMs: number) => {
-    clearIncomingTimer()
-    incomingTimerRef.current = setTimeout(() => {
-      const shift = useShiftStore.getState()
-      if (shift.status !== 'online') return
-      if (shift.activeOrderId) return
-      shift.setShowIncoming(true)
-    }, delayMs)
-  }
+  // Poll for incoming orders when online
+  useEffect(() => {
+    if (!accessToken || !courierId || status !== 'online') {
+      setRealIncoming(null)
+      setShowIncoming(false)
+      return
+    }
 
-  const incomingOrder = data?.incomingOrder ?? null
+    let isMounted = true
+    const checkIncoming = async () => {
+      try {
+        const res = await listMyAssignments(accessToken, courierId, 'ASSIGNED')
+        if (!isMounted) return
+
+        if (res.ok && res.data?.success && res.data?.data?.content && res.data.data.content.length > 0) {
+          const firstAssign = res.data.data.content[0]
+
+          // Get order details
+          const orderRes = await getOrderDetails(accessToken, firstAssign.orderId)
+          if (!isMounted) return
+
+          if (orderRes.ok && orderRes.data?.success && orderRes.data?.data) {
+            const orderData = orderRes.data.data
+            setRealIncoming({
+              id: firstAssign.id, // assignmentId
+              orderId: firstAssign.orderId,
+              client: orderData.recipientInfo?.name || 'Customer',
+              pickupAddress: orderData.pickupAddress?.street || 'Astana Store',
+              deliveryAddress: orderData.deliveryAddress?.street || 'Delivery Address',
+              earnings: 1200,
+              distance: '2.4 km',
+              estimatedMin: 15,
+              pickupCode: orderData.deliveryConfirmationCode || '',
+              comment: orderData.comment || '',
+              parcelsCount: 1,
+              payment: 'Cashless',
+            })
+            setShowIncoming(true)
+          }
+        } else {
+          setRealIncoming(null)
+          setShowIncoming(false)
+        }
+      } catch (err) {
+        console.log('Error checking incoming assignments:', err)
+      }
+    }
+
+    void checkIncoming()
+    const timer = setInterval(() => void checkIncoming(), 4000)
+
+    return () => {
+      isMounted = false
+      clearInterval(timer)
+    }
+  }, [accessToken, courierId, status, setShowIncoming])
+
+  // Poll active order details when busy
+  useEffect(() => {
+    if (!accessToken || !activeOrderId || status !== 'busy') {
+      setActiveOrderDetails(null)
+      return
+    }
+
+    let isMounted = true
+    const fetchDetails = async () => {
+      try {
+        const res = await getOrderDetails(accessToken, activeOrderId)
+        if (isMounted && res.ok && res.data?.success && res.data?.data) {
+          setActiveOrderDetails(res.data.data)
+        }
+      } catch (err) {
+        console.log('Error fetching active order details:', err)
+      }
+    }
+
+    void fetchDetails()
+    const timer = setInterval(() => void fetchDetails(), 5000)
+
+    return () => {
+      isMounted = false
+      clearInterval(timer)
+    }
+  }, [accessToken, activeOrderId, status])
+
+  // Periodic GPS Updater and simulated movement toward restaurant/customer
+  useEffect(() => {
+    if (!accessToken || status === 'offline') {
+      return
+    }
+
+    const updateLocation = async () => {
+      setGpsLocation(prev => {
+        let newLat = prev.latitude
+        let newLng = prev.longitude
+
+        if (status === 'busy' && activeOrderDetails) {
+          let targetLat = 51.1282
+          let targetLng = 71.4304
+
+          if (stage === 'arrived') {
+            targetLat = activeOrderDetails.pickupAddress?.latitude || 51.1282
+            targetLng = activeOrderDetails.pickupAddress?.longitude || 71.4304
+          } else {
+            targetLat = activeOrderDetails.deliveryAddress?.latitude || 51.1350
+            targetLng = activeOrderDetails.deliveryAddress?.longitude || 71.4450
+          }
+
+          const diffLat = targetLat - prev.latitude
+          const diffLng = targetLng - prev.longitude
+
+          if (Math.abs(diffLat) < 0.0001 && Math.abs(diffLng) < 0.0001) {
+            newLat = targetLat
+            newLng = targetLng
+          } else {
+            newLat = prev.latitude + diffLat * 0.15
+            newLng = prev.longitude + diffLng * 0.15
+          }
+        } else {
+          newLat = 51.1282 + (Math.random() - 0.5) * 0.0002
+          newLng = 71.4304 + (Math.random() - 0.5) * 0.0002
+        }
+
+        void updateGPSLocation(accessToken, newLat, newLng, true)
+
+        return { latitude: newLat, longitude: newLng }
+      })
+    }
+
+    void updateLocation()
+    const timer = setInterval(() => void updateLocation(), 5000)
+
+    return () => {
+      clearInterval(timer)
+    }
+  }, [accessToken, status, activeOrderDetails, stage])
 
   useEffect(() => {
     if (!data?.courier) return
     hydrateStatus(data.courier.status)
   }, [data?.courier, hydrateStatus])
 
-  useEffect(() => {
-    return () => {
-      if (activateTimerRef.current) clearTimeout(activateTimerRef.current)
-      clearIncomingTimer()
-    }
-  }, [])
+  const incomingOrder = realIncoming
 
   const activeOrder: ActiveOrderCard | null = useMemo(() => {
-    if (!activeOrderId) return null
+    if (!activeOrderId || !activeOrderDetails) return null
 
-    const seededOrder = (data?.orders ?? []).find(order => order.id === activeOrderId)
-    if (seededOrder) {
-      return {
-        id: seededOrder.id,
-        client: seededOrder.client,
-        pickupAddress: seededOrder.pickupAddress,
-        deliveryAddress: seededOrder.deliveryAddress,
-        earnings: seededOrder.earnings,
-        distance: incomingOrder?.distance ?? '0 km',
-        estimatedMin: incomingOrder?.estimatedMin ?? 0,
-        pickupCode: typeof seededOrder.pickupCode === 'string' ? seededOrder.pickupCode : null,
-        comment: typeof seededOrder.comment === 'string' ? seededOrder.comment : '',
-        parcelsCount: typeof seededOrder.parcelsCount === 'number' ? seededOrder.parcelsCount : undefined,
-        payment: typeof seededOrder.payment === 'string' ? seededOrder.payment : undefined,
-      }
+    return {
+      id: activeAssignmentId || activeOrderId,
+      orderId: activeOrderId,
+      client: activeOrderDetails.recipientInfo?.name || 'Customer',
+      pickupAddress: activeOrderDetails.pickupAddress?.street || 'Restaurant Address',
+      deliveryAddress: activeOrderDetails.deliveryAddress?.street || 'Delivery Address',
+      earnings: 1200,
+      distance: '2.4 km',
+      estimatedMin: 15,
+      pickupCode: activeOrderDetails.deliveryConfirmationCode || '',
+      comment: activeOrderDetails.comment || '',
+      parcelsCount: 1,
+      payment: 'Cashless',
     }
-
-    if (incomingOrder && incomingOrder.id === activeOrderId) {
-      return {
-        id: incomingOrder.id,
-        client: incomingOrder.client,
-        pickupAddress: incomingOrder.pickupAddress,
-        deliveryAddress: incomingOrder.deliveryAddress,
-        earnings: incomingOrder.earnings,
-        distance: incomingOrder.distance,
-        estimatedMin: incomingOrder.estimatedMin,
-        pickupCode: typeof incomingOrder.pickupCode === 'string' ? incomingOrder.pickupCode : null,
-        comment: typeof incomingOrder.comment === 'string' ? incomingOrder.comment : '',
-        parcelsCount: typeof incomingOrder.parcelsCount === 'number' ? incomingOrder.parcelsCount : undefined,
-        payment: typeof incomingOrder.payment === 'string' ? incomingOrder.payment : undefined,
-      }
-    }
-
-    return null
-  }, [activeOrderId, data?.orders, incomingOrder])
+  }, [activeOrderId, activeAssignmentId, activeOrderDetails])
 
   const hasActiveOrder = Boolean(activeOrder)
-  const mapPosition = data?.courierPosition ?? [76.889709, 43.238293]
+  const mapPosition: [number, number] = [gpsLocation.longitude, gpsLocation.latitude]
 
   const toggleOnline = () => {
     if (hasActiveOrder) return
 
     if (status === 'offline') {
       setActivating(true)
-      clearIncomingTimer()
-      activateTimerRef.current = setTimeout(() => {
-        setStatus('online')
+      setStatus('online').then(() => {
         setActivating(false)
-        scheduleIncoming(1000)
-      }, 700)
+      }).catch(err => {
+        console.log('Error going online:', err)
+        setActivating(false)
+      })
       return
     }
 
-    if (activateTimerRef.current) {
-      clearTimeout(activateTimerRef.current)
-      activateTimerRef.current = null
-    }
-    clearIncomingTimer()
     endShift()
   }
 
   const acceptIncoming = () => {
-    clearIncomingTimer()
-
     if (!incomingOrder) {
       setShowIncoming(false)
       setStatus('online')
       return
     }
 
-    acceptOrder(incomingOrder.id)
+    acceptOrder(incomingOrder.id, incomingOrder.orderId).then((success) => {
+      if (!success) {
+        setStatus('online')
+      }
+    }).catch(err => {
+      console.log('Error accepting assignment:', err)
+      setStatus('online')
+    })
   }
 
   const skipIncoming = () => {
+    if (incomingOrder) {
+      rejectOrder(incomingOrder.id).catch(err => {
+        console.log('Error rejecting assignment:', err)
+      })
+    }
     setShowIncoming(false)
-    const shift = useShiftStore.getState()
-    if (shift.status !== 'online') return
-    if (shift.activeOrderId) return
-    scheduleIncoming(randomIncomingDelay())
-  }
-
-  const advanceStageWithQueue = () => {
-    const completed = advanceStage()
-    if (completed) {
-      scheduleIncoming(1800)
-    }
-    return completed
-  }
-
-  const cancelActiveOrderWithQueue = () => {
-    cancelActiveOrder()
-    const shift = useShiftStore.getState()
-    if (shift.status === 'online' && !shift.activeOrderId) {
-      scheduleIncoming(1800)
-    }
   }
 
   return {
@@ -206,7 +304,8 @@ export function useDashboardModel() {
     toggleOnline,
     acceptIncoming,
     skipIncoming,
-    advanceStage: advanceStageWithQueue,
-    cancelActiveOrder: cancelActiveOrderWithQueue,
+    advanceStage,
+    cancelActiveOrder,
+    verifyOTP,
   }
 }

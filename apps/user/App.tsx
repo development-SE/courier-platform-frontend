@@ -12,6 +12,7 @@ import {
 } from 'react-native'
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import { loginUser, refreshUserSession, registerUser } from './src/data/authApi'
+import { getUserProfile } from './src/data/profileApi'
 import { createMockFoodOrder, type MockFoodCheckoutItem } from './src/data/mockFoodOrders'
 import {
   registerDeviceToken,
@@ -24,7 +25,8 @@ import {
   markPushNotificationRead,
   type PushInboxNotification,
 } from './src/data/notificationsInbox'
-import type { UserOrder } from './src/data/ordersApi'
+import { createFoodOrder, type UserOrder } from './src/data/ordersApi'
+import { autoAssignOrder } from './src/data/logisticsApi'
 import {
   clearStoredUserSession,
   loadStoredUserSession,
@@ -43,6 +45,9 @@ import { UserOrdersScreen } from './src/screens/orders/UserOrdersScreen'
 import { UserParcelFlowScreen } from './src/screens/parcel/UserParcelFlowScreen'
 import { UserProfileScreen } from './src/screens/profile/UserProfileScreen'
 import { UserSearchScreen } from './src/screens/search/UserSearchScreen'
+import { UserFoodCatalogScreen } from './src/screens/home/UserFoodCatalogScreen'
+import { UserGroceriesCatalogScreen } from './src/screens/home/UserGroceriesCatalogScreen'
+import { UserPharmacyCatalogScreen } from './src/screens/home/UserPharmacyCatalogScreen'
 
 type AuthSession = StoredUserSession
 
@@ -60,7 +65,7 @@ export default function App() {
   const [mainTab, setMainTab] = useState<'home' | 'orders' | 'cart' | 'profile'>('home')
   const [restaurantInitialScreen, setRestaurantInitialScreen] = useState<'menu' | 'cart'>('menu')
   const [overlayScreen, setOverlayScreen] = useState<
-    'notifications' | 'search' | 'address' | 'restaurant' | 'parcel' | 'order-tracking' | null
+    'notifications' | 'search' | 'address' | 'restaurant' | 'parcel' | 'order-tracking' | 'food-catalog' | 'groceries-catalog' | 'pharmacy-catalog' | null
   >(null)
   const [cartItems, setCartItems] = useState<Record<string, number>>({})
   const [mockFoodOrders, setMockFoodOrders] = useState<UserOrder[]>([])
@@ -241,7 +246,20 @@ export default function App() {
       return { ok: false as const, message: 'This app is only for users.' }
     }
 
-    const nextSession: AuthSession = { ...response.data.data, role: 'CLIENT', email }
+    let nextSession: AuthSession = { ...response.data.data, role: 'CLIENT', email }
+
+    // Fetch full profile to get firstName, lastName, phone
+    const profileResponse = await getUserProfile(nextSession.accessToken)
+    if (profileResponse.ok && profileResponse.data.success && profileResponse.data.data) {
+      const profile = profileResponse.data.data
+      nextSession = {
+        ...nextSession,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        phone: profile.phone,
+        email: profile.email || email,
+      }
+    }
 
     authEntryProgress.setValue(0)
     setSession(nextSession)
@@ -340,18 +358,45 @@ export default function App() {
     [updateMockFoodOrderStatus],
   )
 
-  const handleMockFoodOrderPlaced = useCallback(
-    (params: {
+  const handleFoodOrderPlaced = useCallback(
+    async (params: {
       restaurantName: string
       total: number
       items: MockFoodCheckoutItem[]
     }) => {
-      const order = createMockFoodOrder(params)
-      upsertMockFoodOrder(order)
-      scheduleMockFoodOrderLifecycle(order.orderId)
-      return order
+      if (!session?.accessToken) throw new Error('No access token')
+
+      const createRes = await createFoodOrder(session.accessToken, {
+        restaurantName: params.restaurantName,
+        total: params.total,
+        items: params.items,
+        pickupLat: 51.1282,
+        pickupLon: 71.4304,
+        deliveryLat: 51.1350,
+        deliveryLon: 71.4450,
+      })
+      if (!createRes.ok) {
+        throw new Error('Failed to create food order')
+      }
+      if (!createRes.data.success || !createRes.data.data?.orderId) {
+        throw new Error(createRes.data.error?.message ?? 'Failed to create food order')
+      }
+      const orderId = createRes.data.data.orderId
+
+      await autoAssignOrder(session.accessToken, orderId)
+
+      const newOrder: UserOrder = {
+        orderId,
+        status: 'NEW',
+        serviceType: 'FOOD',
+        totalAmount: params.total,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      upsertMockFoodOrder(newOrder)
+      return newOrder
     },
-    [scheduleMockFoodOrderLifecycle, upsertMockFoodOrder],
+    [session?.accessToken, upsertMockFoodOrder],
   )
 
   const openRestaurantMenu = () => {
@@ -554,6 +599,9 @@ export default function App() {
                 onRestaurantPress={openRestaurantMenu}
                 onSearchPress={() => setOverlayScreen('search')}
                 onParcelsPress={openParcelCreate}
+                onFoodPress={() => setOverlayScreen('food-catalog')}
+                onGroceriesPress={() => setOverlayScreen('groceries-catalog')}
+                onPharmacyPress={() => setOverlayScreen('pharmacy-catalog')}
                 onSignOut={clearSession}
               />
             </View>
@@ -625,9 +673,24 @@ export default function App() {
                 ]}
               >
                 <UserProfileScreen
+                  accessToken={session.accessToken}
                   email={session.email}
+                  firstName={session.firstName}
+                  lastName={session.lastName}
+                  phone={session.phone}
                   onHomePress={() => setMainTab('home')}
                   onOrdersPress={() => setMainTab('orders')}
+                  onProfileUpdated={(data) => {
+                    const updatedSession = {
+                      ...session,
+                      firstName: data.firstName,
+                      lastName: data.lastName,
+                      email: data.email,
+                      phone: data.phone,
+                    }
+                    setSession(updatedSession)
+                    void saveStoredUserSession(updatedSession)
+                  }}
                   onSignOut={clearSession}
                 />
               </Animated.View>
@@ -652,19 +715,50 @@ export default function App() {
           >
             {overlayScreen === 'search' ? (
               <UserSearchScreen onCancelPress={() => setOverlayScreen(null)} />
+            ) : overlayScreen === 'food-catalog' ? (
+              <UserFoodCatalogScreen
+                onBackPress={() => setOverlayScreen(null)}
+                onRestaurantPress={openRestaurantMenu}
+                onAddDish={(dishId) => {
+                  if (dishId === 'crispy-spicy') {
+                    addCartItem('truffle')
+                  } else {
+                    addCartItem('margherita')
+                  }
+                }}
+              />
+            ) : overlayScreen === 'groceries-catalog' ? (
+              <UserGroceriesCatalogScreen
+                onBackPress={() => setOverlayScreen(null)}
+                onStorePress={openRestaurantMenu}
+              />
+            ) : overlayScreen === 'pharmacy-catalog' ? (
+              <UserPharmacyCatalogScreen
+                onBackPress={() => setOverlayScreen(null)}
+                onStorePress={openRestaurantMenu}
+                onAddProduct={(productId) => {
+                  if (productId === 'bandages') {
+                    addCartItem('truffle')
+                  } else {
+                    addCartItem('margherita')
+                  }
+                }}
+              />
             ) : overlayScreen === 'address' ? (
               <UserAddressScreen
+                accessToken={session.accessToken}
                 onBackPress={() => setOverlayScreen(null)}
                 onConfirmPress={() => setOverlayScreen(null)}
               />
             ) : overlayScreen === 'restaurant' ? (
               <RestaurantDetailScreen
                 initialScreen={restaurantInitialScreen}
+                accessToken={session.accessToken}
                 cartItems={cartItems}
                 onAddItem={addCartItem}
                 onRemoveItem={removeCartItem}
                 onClearCart={clearCart}
-                onMockFoodOrderPlaced={handleMockFoodOrderPlaced}
+                onFoodOrderPlaced={handleFoodOrderPlaced}
                 onBackPress={() => setOverlayScreen(null)}
               />
             ) : overlayScreen === 'parcel' ? (

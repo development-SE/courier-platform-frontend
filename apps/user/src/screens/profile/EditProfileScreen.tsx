@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Animated, Easing, Image, Pressable, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
+import { updateUserProfile } from '../../data/profileApi'
 import { InfoRow } from './components/InfoRow'
 import { styles } from './styles'
 import { EmailVerificationScreen } from './verification/EmailVerificationScreen'
@@ -8,19 +9,32 @@ import { NameVerificationScreen } from './verification/NameVerificationScreen'
 import { PasswordVerificationScreen } from './verification/PasswordVerificationScreen'
 import { PhoneVerificationScreen } from './verification/PhoneVerificationScreen'
 
+type ProfileData = {
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+}
+
 type EditProfileScreenProps = {
-  email?: string
+  accessToken: string
+  email: string
   name: string
+  phone: string
   onBackPress: () => void
+  onProfileUpdated: (data: ProfileData) => void
   safeBottom: number
   safeTop: number
   width: number
 }
 
 export function EditProfileScreen({
+  accessToken,
   email,
   name,
+  phone,
   onBackPress,
+  onProfileUpdated,
   safeBottom,
   safeTop,
   width,
@@ -33,9 +47,14 @@ export function EditProfileScreen({
   const [isEmailOpen, setIsEmailOpen] = useState(false)
   const [isPhoneOpen, setIsPhoneOpen] = useState(false)
   const [isPasswordOpen, setIsPasswordOpen] = useState(false)
+
+  const [currentName, setCurrentName] = useState(name)
+  const [currentEmail, setCurrentEmail] = useState(email)
+  const [currentPhone, setCurrentPhone] = useState(phone)
+
   const avatarSize = Math.min(112, Math.max(96, width * 0.29))
   const sidePadding = Math.min(34, Math.max(24, width * 0.07))
-  const [firstName, lastName] = name.split(' ')
+  const [firstName, lastName] = currentName.split(' ')
 
   const openNameScreen = () => {
     setIsNameOpen(true)
@@ -133,6 +152,73 @@ export function EditProfileScreen({
     })
   }
 
+  const handleNameSave = async (newFirstName: string, newLastName: string) => {
+    const response = await updateUserProfile(accessToken, {
+      firstName: newFirstName,
+      lastName: newLastName,
+    })
+
+    if (!response.ok) {
+      return { ok: false, message: response.error.message }
+    }
+
+    if (!response.data.success) {
+      return { ok: false, message: response.data.error?.message ?? response.data.message ?? 'Failed to update name' }
+    }
+
+    const newName = `${newFirstName} ${newLastName}`
+    setCurrentName(newName)
+    onProfileUpdated({
+      firstName: newFirstName,
+      lastName: newLastName,
+      email: currentEmail,
+      phone: currentPhone,
+    })
+    return { ok: true }
+  }
+
+  const handleEmailSave = async (newEmail: string) => {
+    const response = await updateUserProfile(accessToken, { email: newEmail })
+
+    if (!response.ok) {
+      return { ok: false, message: response.error.message }
+    }
+
+    if (!response.data.success) {
+      return { ok: false, message: response.data.error?.message ?? response.data.message ?? 'Failed to update email' }
+    }
+
+    setCurrentEmail(newEmail)
+    onProfileUpdated({
+      firstName: firstName || '',
+      lastName: lastName || '',
+      email: newEmail,
+      phone: currentPhone,
+    })
+    return { ok: true }
+  }
+
+  const handlePhoneSave = async (newPhone: string) => {
+    const response = await updateUserProfile(accessToken, { phone: newPhone })
+
+    if (!response.ok) {
+      return { ok: false, message: response.error.message }
+    }
+
+    if (!response.data.success) {
+      return { ok: false, message: response.data.error?.message ?? response.data.message ?? 'Failed to update phone' }
+    }
+
+    setCurrentPhone(newPhone)
+    onProfileUpdated({
+      firstName: firstName || '',
+      lastName: lastName || '',
+      email: currentEmail,
+      phone: newPhone,
+    })
+    return { ok: true }
+  }
+
   return (
     <View style={styles.editScreen}>
       <View style={[styles.editHeader, { paddingTop: safeTop }]}>
@@ -158,20 +244,20 @@ export function EditProfileScreen({
             },
           ]}
         />
-        <Text allowFontScaling={false} style={styles.editName}>{name}</Text>
+        <Text allowFontScaling={false} style={styles.editName}>{currentName}</Text>
         <Text allowFontScaling={false} style={styles.changePicture}>Change Picture</Text>
       </View>
 
       <View style={[styles.editRows, { paddingHorizontal: sidePadding }]}>
-        <InfoRow label="Name" value={name} onPress={openNameScreen} />
-        <InfoRow label="Email" value={email ?? 'amankeldi...@gmail.com'} onPress={openEmailScreen} />
-        <InfoRow label="Phone" value="+7 707 553 55 33" onPress={openPhoneScreen} />
+        <InfoRow label="Name" value={currentName} onPress={openNameScreen} />
+        <InfoRow label="Email" value={currentEmail} onPress={openEmailScreen} />
+        <InfoRow label="Phone" value={currentPhone || '+7 707 553 55 33'} onPress={openPhoneScreen} />
         <InfoRow label="Change password" onPress={openPasswordScreen} />
       </View>
 
       <View style={[styles.saveArea, { paddingBottom: Math.max(24, safeBottom + 16), paddingHorizontal: sidePadding + 28 }]}>
         <Pressable style={styles.saveButton} onPress={onBackPress}>
-          <Text allowFontScaling={false} style={styles.saveText}>Save Changes</Text>
+          <Text allowFontScaling={false} style={styles.saveText}>Done</Text>
         </Pressable>
       </View>
 
@@ -192,11 +278,12 @@ export function EditProfileScreen({
           ]}
         >
           <NameVerificationScreen
-            firstName={firstName || 'Aman'}
-            lastName={lastName || 'Zhanatov'}
+            firstName={firstName || ''}
+            lastName={lastName || ''}
             safeBottom={safeBottom}
             safeTop={safeTop}
             onBackPress={closeNameScreen}
+            onSave={handleNameSave}
           />
         </Animated.View>
       )}
@@ -218,10 +305,11 @@ export function EditProfileScreen({
           ]}
         >
           <EmailVerificationScreen
-            email={email ?? 'example@gmail.com'}
+            email={currentEmail}
             safeBottom={safeBottom}
             safeTop={safeTop}
             onBackPress={closeEmailScreen}
+            onSave={handleEmailSave}
           />
         </Animated.View>
       )}
@@ -243,9 +331,11 @@ export function EditProfileScreen({
           ]}
         >
           <PhoneVerificationScreen
+            phone={currentPhone}
             safeBottom={safeBottom}
             safeTop={safeTop}
             onBackPress={closePhoneScreen}
+            onSave={handlePhoneSave}
           />
         </Animated.View>
       )}
