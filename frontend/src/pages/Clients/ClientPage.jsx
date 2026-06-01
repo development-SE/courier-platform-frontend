@@ -1,72 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ordersApi } from '../../api/ordersApi'
-import { companiesApi } from '../../api/companies.api'
+import { usersApi } from '../../api/users.api'
 import { Pagination } from '../../components/common/Pagination'
+import { ConfirmDialog } from '../../components/common/ConfirmDialog'
+import { ClientModal } from './components/ClientModal'
 import { auth } from '../../utils/auth'
 import './clientPage.css'
 
 const formatDate = (value) => {
   if (!value) return '—'
-  const date = new Date(value)
+  const ts = typeof value === 'number' ? value * 1000 : value
+  const date = new Date(ts)
   if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
+  return date.toLocaleDateString('ru-RU', {
     day: '2-digit',
+    month: 'short',
     year: 'numeric',
-  })
-}
-
-const formatMoney = (value) => {
-  const amount = Number(value || 0)
-  return new Intl.NumberFormat('ru-RU', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
-}
-
-const normalize = (value) => String(value || '').trim().toLowerCase()
-
-const buildClientRows = (orders, companiesMap) => {
-  const groups = new Map()
-
-  orders.forEach((order) => {
-    const name = order.recipientInfo?.name || '—'
-    const phone = order.recipientInfo?.phone || '—'
-    const companyId = order.companyId || ''
-    const key = `${normalize(phone)}::${normalize(name)}::${companyId}`
-    const amount = Number(order.totalAmount || 0)
-    const createdAt = order.createdAt || null
-
-    if (!groups.has(key)) {
-      const company = companiesMap.get(companyId)
-      groups.set(key, {
-        id: key,
-        clientName: name,
-        phone,
-        companyId,
-        companyName: company?.name || (companyId ? 'Unknown company' : '—'),
-        companyBin: company?.bin || '',
-        totalOrders: 0,
-        totalSpent: 0,
-        lastOrderAt: createdAt,
-        latestOrderStatus: order.status || '—',
-      })
-    }
-
-    const existing = groups.get(key)
-    existing.totalOrders += 1
-    existing.totalSpent += amount
-
-    if (createdAt && (!existing.lastOrderAt || new Date(createdAt) > new Date(existing.lastOrderAt))) {
-      existing.lastOrderAt = createdAt
-      existing.latestOrderStatus = order.status || existing.latestOrderStatus
-    }
-  })
-
-  return Array.from(groups.values()).sort((a, b) => {
-    const left = a.lastOrderAt ? new Date(a.lastOrderAt).getTime() : 0
-    const right = b.lastOrderAt ? new Date(b.lastOrderAt).getTime() : 0
-    return right - left
   })
 }
 
@@ -75,41 +23,42 @@ export const ClientPage = () => {
   const role = session?.role || ''
   const isSuperAdmin = role === 'SUPER_ADMIN'
   const isAdmin = role === 'ADMIN' || isSuperAdmin
-  const isCompanyScoped = role === 'DIRECTOR' || role === 'MANAGER'
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [clients, setClients] = useState([])
-  const [companies, setCompanies] = useState([])
   const [search, setSearch] = useState('')
-  const [companyFilter, setCompanyFilter] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [selectedIds, setSelectedIds] = useState([])
+
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalMode, setModalMode] = useState('view')
+  const [selectedClient, setSelectedClient] = useState(null)
+  const [modalError, setModalError] = useState(null)
+
+  // Delete state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteError, setDeleteError] = useState(null)
 
   const loadClients = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const [ordersResult, companiesResult] = await Promise.all([
-        ordersApi.listAll(),
-        companiesApi.list({ page: 1, pageSize: 500 }),
-      ])
-
-      const companiesMap = new Map(
-        (companiesResult.items || []).map(company => [company.id, company])
-      )
-
-      const rows = buildClientRows(ordersResult.items || [], companiesMap)
-      setClients(rows)
-      setCompanies(companiesResult.items || [])
-      setSelectedIds(prev => prev.filter(id => rows.some(row => row.id === id)))
+      const result = await usersApi.listClients({
+        search,
+        page: 1,
+        pageSize: 1000,
+      })
+      setClients(result.items || [])
+      setSelectedIds(prev => prev.filter(id => (result.items || []).some(c => c.id === id)))
     } catch (err) {
-      setError(err.message || 'Failed to load clients')
+      setError(err.message || 'Не удалось загрузить клиентов')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [search])
 
   useEffect(() => {
     loadClients()
@@ -117,29 +66,17 @@ export const ClientPage = () => {
 
   useEffect(() => {
     setPage(1)
-  }, [search, companyFilter])
+  }, [search])
 
   const filteredClients = useMemo(() => {
-    const query = normalize(search)
+    const query = (search || '').trim().toLowerCase()
+    if (!query) return clients
 
-    return clients.filter((client) => {
-      if (companyFilter && client.companyId !== companyFilter) {
-        return false
-      }
-
-      if (!query) {
-        return true
-      }
-
-      return [
-        client.clientName,
-        client.phone,
-        client.companyName,
-        client.companyBin,
-        client.latestOrderStatus,
-      ].some(value => normalize(value).includes(query))
-    })
-  }, [clients, search, companyFilter])
+    return clients.filter(client =>
+      [client.firstName, client.lastName, client.email, client.phone]
+        .some(value => String(value || '').toLowerCase().includes(query))
+    )
+  }, [clients, search])
 
   const total = filteredClients.length
   const pagedClients = useMemo(() => {
@@ -153,13 +90,14 @@ export const ClientPage = () => {
 
   const handleToggleAll = (event) => {
     if (event.target.checked) {
-      setSelectedIds(pagedClients.map(client => client.id))
-      return
+      setSelectedIds(pagedClients.map(c => c.id))
+    } else {
+      setSelectedIds([])
     }
-    setSelectedIds([])
   }
 
-  const handleToggleOne = (clientId) => {
+  const handleToggleOne = (clientId, e) => {
+    e.stopPropagation()
     setSelectedIds(prev => (
       prev.includes(clientId)
         ? prev.filter(id => id !== clientId)
@@ -167,129 +105,204 @@ export const ClientPage = () => {
     ))
   }
 
-  const handleClearFilters = () => {
-    setSearch('')
-    setCompanyFilter('')
+  const handleRowClick = (clientId, e) => {
+    if (e.target.type === 'checkbox') return
+    const client = clients.find(c => c.id === clientId)
+    setSelectedClient(client)
+    setModalMode('view')
+    setModalOpen(true)
+    setModalError(null)
   }
 
-  const title = isCompanyScoped ? 'Clients' : 'All Clients'
+  const handleView = () => {
+    if (selectedIds.length === 1) {
+      const client = clients.find(c => c.id === selectedIds[0])
+      setSelectedClient(client)
+      setModalMode('view')
+      setModalOpen(true)
+      setModalError(null)
+    }
+  }
+
+  const handleEdit = () => {
+    if (selectedIds.length === 1) {
+      const client = clients.find(c => c.id === selectedIds[0])
+      setSelectedClient(client)
+      setModalMode('edit')
+      setModalOpen(true)
+      setModalError(null)
+    }
+  }
+
+  const handleModalSave = async (formData) => {
+    try {
+      setModalError(null)
+      // Update profile via auth API
+      await usersApi.update(selectedClient.id, {
+        ...formData,
+        role: 'CLIENT',
+      })
+      setModalOpen(false)
+      setSelectedClient(null)
+      setSelectedIds([])
+      await loadClients()
+    } catch (err) {
+      setModalError(err.message)
+    }
+  }
+
+  const handleModalCancel = () => {
+    setModalOpen(false)
+    setSelectedClient(null)
+    setModalError(null)
+  }
+
+  const handleDeleteClick = () => {
+    if (selectedIds.length > 0) {
+      setDeleteError(null)
+      setDeleteConfirmOpen(true)
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    try {
+      setDeleteError(null)
+      for (const id of selectedIds) {
+        await usersApi.removeClient(id)
+      }
+      setDeleteConfirmOpen(false)
+      setSelectedIds([])
+      await loadClients()
+    } catch (err) {
+      setDeleteError(err.message)
+    }
+  }
 
   return (
     <div className="clients-page">
       <div className="clients-header">
-        <h1>{title}</h1>
+        <h1>Clients</h1>
       </div>
 
       {error && <div className="clients-error">{error}</div>}
 
-      <div className="clients-toolbar">
-        <div className="clients-toolbar-left">
-          <button type="button" className="clients-filter-btn" title="Filter" disabled>
-            <img src="/src/assets/filter.png" alt="Filter" width={14} height={14} />
-          </button>
-          <input
-            type="text"
-            placeholder="Search..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="clients-search"
-          />
-          {isAdmin && (
-            <select
-              value={companyFilter}
-              onChange={(event) => setCompanyFilter(event.target.value)}
-              className="clients-company-filter"
-            >
-              <option value="">All companies</option>
-              {companies.map(company => (
-                <option key={company.id} value={company.id}>
-                  {company.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        <div className="clients-toolbar-right">
-          <button
-            type="button"
-            className="clients-secondary-btn"
-            onClick={handleClearFilters}
-            disabled={loading}
-          >
-            Reset
-          </button>
-          <button
-            type="button"
-            className="clients-secondary-btn"
-            onClick={loadClients}
-            disabled={loading}
-          >
-            Refresh
-          </button>
-        </div>
+      <div className={`clients-toolbar ${selectedIds.length > 0 ? 'clients-toolbar-selected' : ''}`}>
+        {selectedIds.length === 0 ? (
+          <>
+            <div className="clients-toolbar-left">
+              <button
+                className="clients-filter-btn"
+                disabled={loading}
+                title="Filter"
+              >
+                <img src="/src/assets/filter.png" alt="Filter" width={15} height={15} />
+              </button>
+              <input
+                type="text"
+                placeholder="Search..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="clients-search"
+              />
+            </div>
+            <div className="clients-toolbar-right">
+              <button
+                type="button"
+                className="clients-btn-refresh"
+                onClick={loadClients}
+                disabled={loading}
+              >
+                ↻ Обновить
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="clients-toolbar-left clients-action-left">
+              <button
+                onClick={handleDeleteClick}
+                disabled={loading}
+                className="action-btn-icon delete-icon"
+                title="Удалить"
+              >
+                <img src="/src/assets/icon.png" alt="Delete" width={15} height={15} />
+              </button>
+              <span className="clients-selection-info">{selectedIds.length} selected</span>
+            </div>
+            <div className="clients-toolbar-right" style={{ gap: '0.6rem' }}>
+              <button
+                onClick={handleEdit}
+                disabled={selectedIds.length !== 1 || loading}
+                className="clients-secondary-btn"
+              >
+                Редактировать
+              </button>
+              <button
+                onClick={handleView}
+                disabled={selectedIds.length !== 1 || loading}
+                className="clients-secondary-btn"
+              >
+                Посмотреть
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="clients-table-wrapper">
-        <table className="clients-table">
-          <thead>
-            <tr>
-              <th className="checkbox-col">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={handleToggleAll}
-                  disabled={pagedClients.length === 0 || loading}
-                />
-              </th>
-              <th className="number-col">#</th>
-              <th>Client</th>
-              <th>Phone</th>
-              <th>Company</th>
-              <th>BIN</th>
-              <th>Orders</th>
-              <th>Total Spent</th>
-              <th>Last Order</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pagedClients.length === 0 && !loading && (
+      {pagedClients.length === 0 && !loading ? (
+        <div className="clients-empty-wrapper">
+          <p>Нет клиентов</p>
+        </div>
+      ) : (
+        <div className="clients-table-wrapper">
+          <table className="clients-table">
+            <thead>
               <tr>
-                <td colSpan={10} className="clients-empty">No clients found</td>
-              </tr>
-            )}
-            {pagedClients.map((client, index) => (
-              <tr key={client.id} className={selectedIds.includes(client.id) ? 'selected' : ''}>
-                <td className="checkbox-col">
+                <th className="checkbox-col">
                   <input
                     type="checkbox"
-                    checked={selectedIds.includes(client.id)}
-                    onChange={() => handleToggleOne(client.id)}
+                    checked={allSelected}
+                    onChange={handleToggleAll}
+                    disabled={pagedClients.length === 0 || loading}
                   />
-                </td>
-                <td className="number-col">{(page - 1) * pageSize + index + 1}</td>
-                <td className="client-name-cell">
-                  <div className="client-name">{client.clientName || '—'}</div>
-                  <span className="client-subtext">{client.id}</span>
-                </td>
-                <td>{client.phone || '—'}</td>
-                <td className="company-cell">
-                  <span className="company-primary">{client.companyName || '—'}</span>
-                  {client.companyBin && <span className="company-secondary">{client.companyBin}</span>}
-                </td>
-                <td>{client.companyBin || '—'}</td>
-                <td>{client.totalOrders}</td>
-                <td>{formatMoney(client.totalSpent)}</td>
-                <td>{formatDate(client.lastOrderAt)}</td>
-                <td>
-                  <span className="client-status-pill">{client.latestOrderStatus || '—'}</span>
-                </td>
+                </th>
+                <th className="number-col">#</th>
+                <th>ИМЯ</th>
+                <th>EMAIL</th>
+                <th>ТЕЛЕФОН</th>
+                <th>ДАТА РЕГИСТРАЦИИ</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {pagedClients.map((client, index) => (
+                <tr
+                  key={client.id}
+                  className={selectedIds.includes(client.id) ? 'selected' : ''}
+                  onClick={(e) => handleRowClick(client.id, e)}
+                >
+                  <td className="checkbox-col">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(client.id)}
+                      onChange={(e) => handleToggleOne(client.id, e)}
+                    />
+                  </td>
+                  <td className="number-col">{(page - 1) * pageSize + index + 1}</td>
+                  <td className="client-name-cell">
+                    <span className="client-name">
+                      {client.firstName} {client.lastName}
+                    </span>
+                    <span className="client-subtext">{client.id}</span>
+                  </td>
+                  <td className="client-email-cell">{client.email || '—'}</td>
+                  <td>{client.phone || '—'}</td>
+                  <td>{formatDate(client.createdAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <Pagination
         page={page}
@@ -302,7 +315,33 @@ export const ClientPage = () => {
         }}
       />
 
-      {loading && <div className="clients-loading">Loading...</div>}
+      <ClientModal
+        isOpen={modalOpen}
+        mode={modalMode}
+        client={selectedClient}
+        onSave={handleModalSave}
+        onCancel={handleModalCancel}
+        loading={loading}
+        error={modalError}
+      />
+
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        title={selectedIds.length === 1
+          ? `Удалить клиента ${clients.find(c => c.id === selectedIds[0])?.firstName} ${clients.find(c => c.id === selectedIds[0])?.lastName}?`
+          : `Удалить ${selectedIds.length} клиентов?`
+        }
+        message={deleteError || ''}
+        messageTone={deleteError ? 'error' : 'default'}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          setDeleteConfirmOpen(false)
+          setDeleteError(null)
+        }}
+        loading={loading}
+      />
+
+      {loading && <div className="clients-loading">Загрузка...</div>}
     </div>
   )
 }

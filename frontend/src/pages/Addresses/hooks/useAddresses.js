@@ -45,8 +45,27 @@ export const useAddresses = (initialPageSize = 10) => {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const result = await usersApi.list({ page: 1, pageSize: 1000 })
-      setUsers(result.items || [])
+      const [employeesRes, clientsRes, couriersRes] = await Promise.all([
+        usersApi.list({ page: 1, pageSize: 1000 }),
+        usersApi.listClients({ page: 1, pageSize: 1000 }),
+        usersApi.listCouriers({ page: 1, pageSize: 1000 }),
+      ])
+      
+      const allUsers = [
+        ...(employeesRes.items || []),
+        ...(clientsRes.items || []),
+        ...(couriersRes.items || []),
+      ]
+      
+      // Remove duplicates by id
+      const uniqueUsersMap = new Map()
+      allUsers.forEach(u => {
+        if (u && u.id) {
+          uniqueUsersMap.set(String(u.id), u)
+        }
+      })
+      
+      setUsers(Array.from(uniqueUsersMap.values()))
     } catch (err) {
       setError(err.message)
     }

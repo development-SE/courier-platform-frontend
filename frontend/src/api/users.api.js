@@ -132,5 +132,46 @@ export const usersApi = {
     }
   },
 
+  async listClients({ search = '', page = 1, pageSize = 10 } = {}) {
+    const token = auth.getToken()
+    const params = new URLSearchParams()
+    params.append('role', 'CLIENT')
+    params.append('page', page)
+    params.append('size', pageSize)
+
+    const data = await api.get(`/auth/users?${params.toString()}`, token)
+    const items = (data.data || [])
+      .filter(user => {
+        const query = search.trim().toLowerCase()
+        if (!query) return true
+        return [
+          user.email,
+          user.firstName,
+          user.lastName,
+          user.phone,
+        ].some(value => String(value || '').toLowerCase().includes(query))
+      })
+      .map(user => ({
+        id: user.userId,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        phone: user.phone || '',
+        role: user.role || 'CLIENT',
+        isEmailVerified: user.isEmailVerified,
+        createdAt: user.createdAt,
+      }))
+
+    return {
+      items,
+      total: items.length,
+    }
+  },
+
+  async removeClient(id) {
+    const token = auth.getToken()
+    await api.delete(`/auth/users/${id}`, token)
+  },
+
   
 }
