@@ -10,6 +10,7 @@ import {
   getOrderDetails,
   type OrderResponse,
 } from '../../data/logisticsApi'
+import { getCurrentLocation } from '../../platform/location'
 
 type ActiveOrderCard = {
   id: string
@@ -52,6 +53,20 @@ export function useDashboardModel() {
     verifyOTP,
     cancelActiveOrder,
     endShift,
+
+    isOnline,
+    lastKnownLocation,
+    lastLocationSyncAt,
+    locationPermissionStatus,
+    locationSyncError,
+    onlineTogglePending,
+    locationSyncPending,
+
+    pendingAssignments,
+    activeAssignments,
+    completedAssignments,
+    loadAssignments,
+    refreshAssignments,
   } = useShiftStore(useShallow(state => ({
     status: state.status,
     activating: state.activating,
@@ -69,6 +84,20 @@ export function useDashboardModel() {
     verifyOTP: state.verifyOTP,
     cancelActiveOrder: state.cancelActiveOrder,
     endShift: state.endShift,
+
+    isOnline: state.isOnline,
+    lastKnownLocation: state.lastKnownLocation,
+    lastLocationSyncAt: state.lastLocationSyncAt,
+    locationPermissionStatus: state.locationPermissionStatus,
+    locationSyncError: state.locationSyncError,
+    onlineTogglePending: state.onlineTogglePending,
+    locationSyncPending: state.locationSyncPending,
+
+    pendingAssignments: state.pendingAssignments,
+    activeAssignments: state.activeAssignments,
+    completedAssignments: state.completedAssignments,
+    loadAssignments: state.loadAssignments,
+    refreshAssignments: state.refreshAssignments,
   })))
 
   const [realIncoming, setRealIncoming] = useState<any>(null)
@@ -165,57 +194,63 @@ export function useDashboardModel() {
     }
   }, [accessToken, activeOrderId, status])
 
-  // Periodic GPS Updater and simulated movement toward restaurant/customer
+  // Periodic GPS Updater using real device location
   useEffect(() => {
     if (!accessToken || status === 'offline') {
       return
     }
 
     const updateLocation = async () => {
-      setGpsLocation(prev => {
-        let newLat = prev.latitude
-        let newLng = prev.longitude
-
-        if (status === 'busy' && activeOrderDetails) {
-          let targetLat = 51.1282
-          let targetLng = 71.4304
-
-          if (stage === 'arrived') {
-            targetLat = activeOrderDetails.pickupAddress?.latitude || 51.1282
-            targetLng = activeOrderDetails.pickupAddress?.longitude || 71.4304
+      try {
+        useShiftStore.setState({ locationSyncPending: true })
+        const coords = await getCurrentLocation()
+        if (coords) {
+          const res = await updateGPSLocation(accessToken, coords.latitude, coords.longitude, true)
+          if (res.ok && res.data?.success) {
+            useShiftStore.setState({
+              lastKnownLocation: coords,
+              lastLocationSyncAt: Date.now(),
+              locationSyncError: null,
+              locationSyncPending: false,
+            })
+            setGpsLocation(coords)
           } else {
-            targetLat = activeOrderDetails.deliveryAddress?.latitude || 51.1350
-            targetLng = activeOrderDetails.deliveryAddress?.longitude || 71.4450
-          }
-
-          const diffLat = targetLat - prev.latitude
-          const diffLng = targetLng - prev.longitude
-
-          if (Math.abs(diffLat) < 0.0001 && Math.abs(diffLng) < 0.0001) {
-            newLat = targetLat
-            newLng = targetLng
-          } else {
-            newLat = prev.latitude + diffLat * 0.15
-            newLng = prev.longitude + diffLng * 0.15
+            const errorMsg = res.ok ? res.data?.error?.message ?? res.data?.message : res.error?.message
+            useShiftStore.setState({
+              locationSyncError: errorMsg || 'Failed to sync location to backend',
+              locationSyncPending: false,
+            })
           }
         } else {
-          newLat = 51.1282 + (Math.random() - 0.5) * 0.0002
-          newLng = 71.4304 + (Math.random() - 0.5) * 0.0002
+          useShiftStore.setState({
+            locationSyncError: 'GPS location unavailable. Verify location settings are turned on.',
+            locationSyncPending: false,
+          })
         }
-
-        void updateGPSLocation(accessToken, newLat, newLng, true)
-
-        return { latitude: newLat, longitude: newLng }
-      })
+        void refreshAssignments()
+      } catch (err) {
+        console.error('[useDashboardModel] Location sync failed:', err)
+        useShiftStore.setState({
+          locationSyncError: err instanceof Error ? err.message : 'Unknown error during location sync',
+          locationSyncPending: false,
+        })
+      }
     }
 
     void updateLocation()
-    const timer = setInterval(() => void updateLocation(), 5000)
+    const timer = setInterval(() => void updateLocation(), 8000)
 
     return () => {
       clearInterval(timer)
     }
-  }, [accessToken, status, activeOrderDetails, stage])
+  }, [accessToken, status])
+
+  // Eager load assignments on mount or session hydration
+  useEffect(() => {
+    if (accessToken && courierId) {
+      void loadAssignments()
+    }
+  }, [accessToken, courierId])
 
   useEffect(() => {
     if (!data?.courier) return
@@ -244,23 +279,22 @@ export function useDashboardModel() {
   }, [activeOrderId, activeAssignmentId, activeOrderDetails])
 
   const hasActiveOrder = Boolean(activeOrder)
-  const mapPosition: [number, number] = [gpsLocation.longitude, gpsLocation.latitude]
+
+  const mapPosition: [number, number] = useMemo(() => {
+    if (lastKnownLocation) {
+      return [lastKnownLocation.longitude, lastKnownLocation.latitude]
+    }
+    return [gpsLocation.longitude, gpsLocation.latitude]
+  }, [lastKnownLocation, gpsLocation])
 
   const toggleOnline = () => {
-    if (hasActiveOrder) return
+    if (hasActiveOrder || onlineTogglePending) return
 
     if (status === 'offline') {
-      setActivating(true)
-      setStatus('online').then(() => {
-        setActivating(false)
-      }).catch(err => {
-        console.log('Error going online:', err)
-        setActivating(false)
-      })
-      return
+      setStatus('online')
+    } else {
+      endShift()
     }
-
-    endShift()
   }
 
   const acceptIncoming = () => {
@@ -295,7 +329,7 @@ export function useDashboardModel() {
     incomingOrder,
     activeOrder,
     status,
-    activating,
+    activating: activating || onlineTogglePending,
     hasActiveOrder,
     showIncoming,
     mapPosition,
@@ -307,5 +341,19 @@ export function useDashboardModel() {
     advanceStage,
     cancelActiveOrder,
     verifyOTP,
+
+    isOnline,
+    lastKnownLocation,
+    lastLocationSyncAt,
+    locationPermissionStatus,
+    locationSyncError,
+    onlineTogglePending,
+    locationSyncPending,
+
+    pendingAssignments,
+    activeAssignments,
+    completedAssignments,
+    loadAssignments,
+    refreshAssignments,
   }
 }

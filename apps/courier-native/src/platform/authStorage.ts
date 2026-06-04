@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 
 const AUTH_KEY = 'swiftdeliver_courier_auth'
 const AUTH_TOKENS_KEY = 'swiftdeliver_courier_tokens'
+const DEVICE_KEY = 'swiftdeliver_courier_device'
 
 async function readFromSecureStore(key: string) {
   try {
@@ -101,6 +102,64 @@ export async function clearAuthTokens() {
 
   try {
     await AsyncStorage.removeItem(AUTH_TOKENS_KEY)
+  } catch {
+    // no-op
+  }
+}
+
+export async function readNotificationDeviceState() {
+  const secureValue = await readFromSecureStore(DEVICE_KEY)
+  if (secureValue != null) {
+    try {
+      return JSON.parse(secureValue) as {
+        deviceId?: string
+        pushToken?: string
+        provider?: string
+        enabled?: boolean
+      } | null
+    } catch {
+      return null
+    }
+  }
+
+  try {
+    const asyncValue = await AsyncStorage.getItem(DEVICE_KEY)
+    return asyncValue
+      ? JSON.parse(asyncValue) as {
+          deviceId?: string
+          pushToken?: string
+          provider?: string
+          enabled?: boolean
+        }
+      : null
+  } catch {
+    return null
+  }
+}
+
+export async function persistNotificationDeviceState(device: {
+  deviceId?: string
+  pushToken?: string
+  provider?: string
+  enabled?: boolean
+}) {
+  const serialized = JSON.stringify(device ?? {})
+  const secureSuccess = await writeToSecureStore(DEVICE_KEY, serialized)
+  if (secureSuccess) return
+
+  try {
+    await AsyncStorage.setItem(DEVICE_KEY, serialized)
+  } catch {
+    // no-op
+  }
+}
+
+export async function clearNotificationDeviceState() {
+  const secureSuccess = await removeFromSecureStore(DEVICE_KEY)
+  if (secureSuccess) return
+
+  try {
+    await AsyncStorage.removeItem(DEVICE_KEY)
   } catch {
     // no-op
   }

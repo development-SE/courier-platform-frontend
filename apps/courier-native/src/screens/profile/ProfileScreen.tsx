@@ -1,36 +1,46 @@
-﻿import { useMemo } from 'react'
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, View } from 'react-native'
+import { useMemo } from 'react'
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { useQuery } from '@tanstack/react-query'
-import { getCourierInitials } from '@swiftdeliver/core'
-import { fetchCourierProfileFromCore } from '../../data/coreClient'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { appTheme } from '../../theme/appTheme'
 import { useAuthStore } from '../../store/authStore'
 import { AppButton, AppText } from '../../ui/primitives'
 
-const PROFILE_ITEMS = [
-  'Статус на линии',
-  'Тип транспорта',
-  'Проверка личности',
-  'Доступ к парку',
-  'Счёт для выплат',
-  'История выплат',
-  'Уведомления',
-  'Язык',
-]
-
 export function ProfileScreen() {
   const signOut = useAuthStore(state => state.signOut)
+  const firstName = useAuthStore(state => state.firstName)
+  const lastName = useAuthStore(state => state.lastName)
+  const email = useAuthStore(state => state.email)
+  const role = useAuthStore(state => state.role)
+  const courierProfile = useAuthStore(state => state.courierProfile)
+  const notificationDevice = useAuthStore(state => state.notificationDevice)
 
-  const { data: courier } = useQuery({
-    queryKey: ['courier-profile'],
-    queryFn: fetchCourierProfileFromCore,
-  })
+  const initials = useMemo(() => {
+    const seed = [firstName, lastName].filter(Boolean).join(' ').trim()
+    if (!seed) return '--'
+    return seed
+      .split(/\s+/)
+      .slice(0, 2)
+      .map(part => part[0]?.toUpperCase() ?? '')
+      .join('')
+  }, [firstName, lastName])
 
-  const initials = useMemo(() => (courier ? getCourierInitials(courier) : '--'), [courier])
-  const fullName = courier ? `${courier.name} ${courier.lastName}`.trim() : 'Курьер'
-  const park = courier?.park ?? '—'
-  const rating = courier?.rating ?? 0
+  const fullName = [firstName, lastName].filter(Boolean).join(' ').trim() || 'Курьер'
+  const transportLabel = courierProfile?.transportType ?? '—'
+  const verificationLabel = courierProfile?.isVerified ? 'Проверен' : 'Не проверен'
+  const roleLabel = role ? `Роль ${role}` : 'Курьер'
+  const lineStatus = courierProfile?.canTakeOrders ? 'На линии' : 'Недоступен'
+
+  const profileItems = [
+    `Статус на линии: ${lineStatus}`,
+    `Тип транспорта: ${transportLabel}`,
+    `Проверка личности: ${verificationLabel}`,
+    `Статус занятости: ${courierProfile?.employmentStatus ?? '—'}`,
+    `Тип курьера: ${courierProfile?.courierType ?? '—'}`,
+    `Макс. активных заказов: ${courierProfile?.maxActiveOrders ?? '—'}`,
+    `Push-уведомления: ${notificationDevice?.enabled ? 'Подключены' : 'Не подключены'}`,
+    `Провайдер push: ${notificationDevice?.provider ?? '—'}`,
+  ]
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -43,13 +53,13 @@ export function ProfileScreen() {
           </View>
           <View style={styles.identityInfo}>
             <AppText variant="body" style={styles.identityName}>{fullName}</AppText>
-            <AppText variant="label" style={styles.identityMuted}>{park}</AppText>
-            <AppText variant="label" style={styles.identityMuted}>Рейтинг {rating} · Курьер</AppText>
+            <AppText variant="label" style={styles.identityMuted}>{email ?? courierProfile?.id ?? '—'}</AppText>
+            <AppText variant="label" style={styles.identityMuted}>{transportLabel} · {roleLabel}</AppText>
           </View>
         </View>
 
         <View style={styles.groupCard}>
-          {PROFILE_ITEMS.map((label, index) => (
+          {profileItems.map((label, index) => (
             <Pressable
               key={label}
               style={[styles.profileRow, index === 0 ? styles.profileRowFirst : null]}

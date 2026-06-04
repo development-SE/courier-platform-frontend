@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import {
+  ActivityIndicator,
   ImageBackground,
   Pressable,
   StyleSheet,
@@ -40,15 +41,24 @@ export function SignInScreen({ navigation, loadingOnly = false }: Props) {
   const [login, setLogin] = useState('courier')
   const [password, setPassword] = useState('123456')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
   const heroBaseHeight = Math.max(208, Math.min(256, Math.round(windowHeight * 0.29)))
   const heroHeight = heroBaseHeight + insets.top
   const panelBottom = Math.max(14, insets.bottom + 4)
 
   const handleSignIn = async () => {
+    if (loading) return
     setError('')
-    const ok = await signIn(login, password)
-    if (!ok) {
-      setError('Invalid login or password')
+    setLoading(true)
+    try {
+      const result = await signIn(login, password)
+      if (!result.ok) {
+        setError(result.message || 'Invalid login or password')
+      }
+    } catch (err: any) {
+      setError(err?.message || 'An unexpected error occurred')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -99,8 +109,16 @@ export function SignInScreen({ navigation, loadingOnly = false }: Props) {
 
           <View style={styles.actionRow}>
             <Text style={styles.forgotText}>Forgot password</Text>
-            <Pressable onPress={() => void handleSignIn()} style={styles.loginButton}>
-              <Text style={styles.loginButtonText}>Log in</Text>
+            <Pressable
+              onPress={() => void handleSignIn()}
+              disabled={loading}
+              style={[styles.loginButton, loading && { opacity: 0.7 }]}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.loginButtonText}>Log in</Text>
+              )}
             </Pressable>
           </View>
 

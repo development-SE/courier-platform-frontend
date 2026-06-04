@@ -20,11 +20,21 @@
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#10111a"
-      }
+      },
+      "package": "com.amanchik12.swiftdelivercourier",
+      "googleServicesFile": "./google-services.json"
+      
     },
     "plugins": [
       "expo-asset",
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8f2e6566-34c1-4d3d-b18b-644f5c4084bd"
+      }
+    },
+    "owner": "amanchik12"
   }
 }

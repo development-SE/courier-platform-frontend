@@ -28,3 +28,11 @@ Thumbs.db
 .vscode/
 
 GoogleService-Info.plist
+
+# Mobile app secrets and generated native projects
+apps/courier-native/google-services.json
+apps/courier-native/credentials.json
+apps/courier-native/*firebase-adminsdk*.json
+apps/courier-native/GoogleService-Info.plist
+apps/courier-native/android/
+apps/courier-native/ios/

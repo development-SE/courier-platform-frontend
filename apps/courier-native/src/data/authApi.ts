@@ -14,6 +14,13 @@ export type LoginResult = {
   role?: string
 }
 
+export type RefreshResult = {
+  accessToken: string
+  refreshToken: string
+  expiresAt?: number
+  role?: string
+}
+
 export type RegisterResult = {
   userId: string
   confirmationToken: string
@@ -61,5 +68,12 @@ export async function registerWithBackend(params: {
   return apiRequest<ApiResponse<RegisterResult>>('/api/v1/auth/register', {
     method: 'POST',
     json: payload,
+  })
+}
+
+export async function refreshSessionWithBackend(refreshToken: string) {
+  return apiRequest<ApiResponse<RefreshResult>>('/api/v1/auth/refresh', {
+    method: 'POST',
+    json: { refreshToken },
   })
 }

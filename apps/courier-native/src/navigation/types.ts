@@ -4,7 +4,7 @@ export type RootStackParamList = {
   [SCREEN_IDS.SIGN_IN]: undefined
   [SCREEN_IDS.SIGN_UP]: undefined
   [ROOT_ROUTES.MAIN_TABS]: undefined
-  [SCREEN_IDS.ORDER_DETAIL]: { orderId: string }
+  [SCREEN_IDS.ORDER_DETAIL]: { orderId: string; assignmentId?: string }
 }
 
 export type MainTabParamList = {

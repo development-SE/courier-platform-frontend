@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, View, Modal, TextInput, Alert, ActivityIndicator } from 'react-native'
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  Modal,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+  Platform,
+  ImageBackground,
+  Linking,
+} from 'react-native'
 import MapView, { Marker } from 'react-native-maps'
 import { Ionicons } from '@expo/vector-icons'
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet'
@@ -9,6 +21,7 @@ import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue,
 import { SCREEN_IDS } from '../../constants/screenIds'
 import { appTheme } from '../../theme/appTheme'
 import { useDashboardModel } from './useDashboardModel'
+import { useAuthStore } from '../../store/authStore'
 
 const STATUS_LABEL: Record<'offline' | 'online' | 'busy', string> = {
   offline: 'Offline',
@@ -79,6 +92,7 @@ function getInitials(fullName: string) {
 export function DashboardScreen() {
   const navigation = useNavigation<any>()
   const insets = useSafeAreaInsets()
+  const notificationDevice = useAuthStore(state => state.notificationDevice)
   const bottomSheetRef = useRef<BottomSheet>(null)
   const animatedIndex = useSharedValue(0)
   const [sheetIndex, setSheetIndex] = useState(0)
@@ -103,7 +117,25 @@ export function DashboardScreen() {
     advanceStage,
     cancelActiveOrder,
     verifyOTP,
+
+    isOnline,
+    lastKnownLocation,
+    lastLocationSyncAt,
+    locationPermissionStatus,
+    locationSyncError,
+    onlineTogglePending,
+    locationSyncPending,
+
+    pendingAssignments,
+    activeAssignments,
+    completedAssignments,
   } = useDashboardModel()
+
+  const syncFreshnessText = locationSyncPending
+    ? 'Syncing GPS location...'
+    : lastLocationSyncAt
+      ? `GPS Synced: ${new Date(lastLocationSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+      : 'GPS: Not synced yet'
 
   const handleActionButtonPress = () => {
     if (stage === 'delivered') {
@@ -142,16 +174,14 @@ export function DashboardScreen() {
     [latitude, longitude],
   )
 
-  const ordersCount = hasActiveOrder ? '1' : '0'
-  const distanceValue = activeOrder?.distance ?? incomingOrder?.distance ?? '0 km'
-  const earningsValue = `${activeOrder?.earnings ?? incomingOrder?.earnings ?? 0} KZT`
+  const pendingOffersCount = String(pendingAssignments?.length ?? 0)
+  const activeAssignmentsCount = String(activeAssignments?.length ?? 0)
+  const completedAssignmentsCount = String(completedAssignments?.length ?? 0)
 
   const statusHelper =
     status === 'offline'
       ? 'Go online to start receiving orders'
-      : status === 'online'
-        ? 'Waiting for new orders nearby'
-        : `Order #${activeOrder?.id ?? '-'} in progress`
+      : `${status === 'online' ? 'Waiting for new orders nearby' : `Order #${activeOrder?.id ?? '-'} in progress`} · ${syncFreshnessText}`
 
   const mainCtaTitle = hasActiveOrder
     ? 'ORDER ACTIVE'
@@ -180,8 +210,16 @@ export function DashboardScreen() {
   const incomingOverlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const activeActionLabel = ACTIVE_STAGE_ACTION_LABEL[stage]
-  const courierName = courier ? `${courier.name} ${courier.lastName}`.trim() : 'Courier Support'
-  const courierPhone = courier?.phone ?? '+7 777 123 45 67'
+
+  const storeFirstName = useAuthStore(state => state.firstName)
+  const storeLastName = useAuthStore(state => state.lastName)
+  const storeCourierProfile = useAuthStore(state => state.courierProfile)
+  const storePhone = useAuthStore(state => state.phone)
+
+  const courierName = [storeFirstName, storeLastName].filter(Boolean).join(' ').trim() ||
+                      (courier ? `${courier.name} ${courier.lastName}`.trim() : 'Courier Support')
+  const courierPhone = storePhone || courier?.phone || '+7 777 123 45 67'
+  const courierPark = storeCourierProfile?.notes || courier?.park || 'Oktyabrsky District'
 
   const isExpanded = sheetIndex === 1
 
@@ -268,8 +306,8 @@ export function DashboardScreen() {
       <MapView style={StyleSheet.absoluteFill} customMapStyle={DARK_MAP_STYLE} initialRegion={region}>
         <Marker
           coordinate={{ latitude, longitude }}
-          title={courier ? `${courier.name} ${courier.lastName}` : 'Courier'}
-          description={courier?.park ?? 'Courier park'}
+          title={courierName}
+          description={courierPark}
         />
       </MapView>
 
@@ -342,7 +380,7 @@ export function DashboardScreen() {
             {!hasActiveOrder ? (
               <>
                 <View style={styles.statusRow}>
-                  <View style={styles.statusDot} />
+                  <View style={[styles.statusDot, status === 'online' ? styles.statusDotOnline : status === 'busy' ? styles.statusDotBusy : styles.statusDotOffline]} />
                   <Text style={styles.statusText}>{STATUS_LABEL[status]}</Text>
                 </View>
                 <Text style={styles.helperText}>{statusHelper}</Text>
@@ -352,7 +390,7 @@ export function DashboardScreen() {
             {hasActiveOrder && activeOrder ? (
               <Animated.View style={collapsedActiveAnimatedStyle} pointerEvents={isExpanded ? 'none' : 'auto'}>
                 <View style={styles.statusRow}>
-                  <View style={styles.statusDot} />
+                  <View style={[styles.statusDot, status === 'online' ? styles.statusDotOnline : status === 'busy' ? styles.statusDotBusy : styles.statusDotOffline]} />
                   <Text style={styles.statusText}>{STATUS_LABEL[status]}</Text>
                 </View>
                 <Text style={styles.helperText}>{statusHelper}</Text>
@@ -370,19 +408,36 @@ export function DashboardScreen() {
                 </View>
               </Animated.View>
             ) : null}
+
+            {locationPermissionStatus === 'denied' && (
+              <View style={styles.warningBanner}>
+                <Ionicons name="warning-outline" size={16} color="#ef706a" />
+                <Text style={styles.warningText}>Location permission is required to go online.</Text>
+                <Pressable style={styles.settingsButton} onPress={() => Linking.openSettings()}>
+                  <Text style={styles.settingsButtonText}>Settings</Text>
+                </Pressable>
+              </View>
+            )}
+
+            {locationSyncError && (
+              <View style={styles.syncErrorBanner}>
+                <Ionicons name="cloud-offline-outline" size={16} color="#f59e0b" />
+                <Text style={styles.syncErrorText}>{locationSyncError}</Text>
+              </View>
+            )}
           </View>
 
           {!hasActiveOrder ? (
             <View style={styles.idleContent}>
               <View style={styles.metricsRow}>
-                <MetricTile icon="receipt-outline" label="ORDERS" value={ordersCount} />
-                <MetricTile icon="map-outline" label="DISTANCE" value={distanceValue} />
-                <MetricTile icon="reload-outline" label="EARNINGS" value={earningsValue} />
+                <MetricTile icon="receipt-outline" label="OFFERS" value={pendingOffersCount} />
+                <MetricTile icon="map-outline" label="ACTIVE" value={activeAssignmentsCount} />
+                <MetricTile icon="reload-outline" label="COMPLETED" value={completedAssignmentsCount} />
               </View>
 
               <Pressable style={styles.parkRow} onPress={() => navigation.navigate(SCREEN_IDS.ORDERS)}>
                 <View style={styles.parkMain}>
-                  <Text style={styles.parkTitle}>{courier?.park ?? 'Oktyabrsky District'}</Text>
+                  <Text style={styles.parkTitle}>{courierPark}</Text>
                   <Text style={styles.parkHint}>
                     {status === 'offline' ? 'No orders nearby' : 'Tap to open order feed'}
                   </Text>
@@ -1354,5 +1409,154 @@ const styles = StyleSheet.create({
     color: '#2d1b13',
     fontSize: 14,
     fontWeight: '700',
+  },
+  telemetryBg: {
+    flex: 1,
+    backgroundColor: '#090b10',
+    paddingHorizontal: 20,
+    gap: 16,
+  },
+  telemetryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+  },
+  telemetryTitle: {
+    color: '#ee8f5e',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+  },
+  telemetryCard: {
+    backgroundColor: '#161924',
+    borderWidth: 1,
+    borderColor: '#2a2f3f',
+    borderRadius: 18,
+    padding: 16,
+    gap: 12,
+  },
+  telemetryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  telemetryIndicatorWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  telemetryDotIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  telemetryLabel: {
+    color: '#8a8e9c',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  telemetryValue: {
+    color: '#f2f3f7',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  telemetryValueMonospace: {
+    color: '#34d399',
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: Platform.select({ ios: 'CourierNewPSMT', android: 'monospace', default: 'monospace' }),
+  },
+  statusDotOffline: {
+    backgroundColor: '#9997a1',
+  },
+  statusDotOnline: {
+    backgroundColor: '#34d399',
+    shadowColor: '#34d399',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+  },
+  statusDotBusy: {
+    backgroundColor: '#f59e0b',
+  },
+  logsCard: {
+    backgroundColor: '#11131c',
+    borderWidth: 1,
+    borderColor: '#202433',
+    borderRadius: 18,
+    padding: 16,
+    gap: 8,
+  },
+  logsTitle: {
+    color: '#6f7485',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginBottom: 4,
+  },
+  logLine: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  logTime: {
+    color: '#ee8f5e',
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: Platform.select({ ios: 'CourierNewPSMT', android: 'monospace', default: 'monospace' }),
+  },
+  logText: {
+    color: '#9da2af',
+    fontSize: 11,
+    fontWeight: '500',
+    flex: 1,
+  },
+  warningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(239, 112, 106, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 112, 106, 0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 8,
+    gap: 8,
+  },
+  warningText: {
+    color: '#ef706a',
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  settingsButton: {
+    backgroundColor: '#ef706a',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  settingsButtonText: {
+    color: '#2d1b13',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  syncErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 8,
+    gap: 8,
+  },
+  syncErrorText: {
+    color: '#f59e0b',
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
   },
 })

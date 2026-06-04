@@ -17,9 +17,12 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 import { useShallow } from 'zustand/react/shallow'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { SCREEN_IDS } from '../../constants/screenIds'
+import { appTheme } from '../../theme/appTheme'
 import { fetchDashboardSnapshotFromCore, fetchOrdersFromCore } from '../../data/coreClient'
 import type { RootStackParamList } from '../../navigation/types'
 import { useShiftStore } from '../../store/shiftStore'
+import { useAuthStore } from '../../store/authStore'
+import { getOrderDetails, getAssignment, type AssignmentStatus } from '../../data/logisticsApi'
 
 type Props = NativeStackScreenProps<RootStackParamList, typeof SCREEN_IDS.ORDER_DETAIL>
 
@@ -60,7 +63,35 @@ function normalizePayment(payment: string) {
 
 export function OrderDetailScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets()
-  const orderId = route.params.orderId
+  const { orderId, assignmentId } = route.params || {}
+
+  const accessToken = useAuthStore(state => state.accessToken)
+
+  const { data: realOrder, isLoading: isRealOrderLoading } = useQuery({
+    queryKey: ['order-details', orderId],
+    queryFn: async () => {
+      if (!accessToken) return null
+      const res = await getOrderDetails(accessToken, orderId)
+      if (res.ok && res.data?.success && res.data?.data) {
+        return res.data.data
+      }
+      return null
+    },
+    enabled: !!accessToken && !!orderId,
+  })
+
+  const { data: realAssignment, isLoading: isRealAssignmentLoading, refetch: refetchAssignment } = useQuery({
+    queryKey: ['assignment-details', assignmentId],
+    queryFn: async () => {
+      if (!accessToken || !assignmentId) return null
+      const res = await getAssignment(accessToken, assignmentId)
+      if (res.ok && res.data?.success && res.data?.data) {
+        return res.data.data
+      }
+      return null
+    },
+    enabled: !!accessToken && !!assignmentId,
+  })
 
   const { data: orders = [] } = useQuery({
     queryKey: ['orders'],
@@ -76,15 +107,91 @@ export function OrderDetailScreen({ navigation, route }: Props) {
   const [otpCode, setOtpCode] = useState('')
   const [isVerifying, setIsVerifying] = useState(false)
 
-  const { activeOrderId, stage, advanceStage, verifyOTP, cancelActiveOrder } = useShiftStore(useShallow(state => ({
+  const {
+    activeOrderId,
+    stage,
+    advanceStage,
+    verifyOTP,
+    cancelActiveOrder,
+    actionPendingAssignmentId,
+    actionError,
+    acceptAssignment,
+    rejectAssignment,
+    statusMutationAssignmentId,
+    statusMutationError,
+    updateAssignmentStatus,
+    verifyingDeliveryCodeAssignmentId,
+    deliveryCodeError,
+    verifyDeliveryCode,
+    resendDeliveryCode,
+  } = useShiftStore(useShallow(state => ({
     activeOrderId: state.activeOrderId,
     stage: state.stage,
     advanceStage: state.advanceStage,
     verifyOTP: state.verifyOTP,
     cancelActiveOrder: state.cancelActiveOrder,
+    actionPendingAssignmentId: state.actionPendingAssignmentId,
+    actionError: state.actionError,
+    acceptAssignment: state.acceptAssignment,
+    rejectAssignment: state.rejectAssignment,
+    statusMutationAssignmentId: state.statusMutationAssignmentId,
+    statusMutationError: state.statusMutationError,
+    updateAssignmentStatus: state.updateAssignmentStatus,
+    verifyingDeliveryCodeAssignmentId: state.verifyingDeliveryCodeAssignmentId,
+    deliveryCodeError: state.deliveryCodeError,
+    verifyDeliveryCode: state.verifyDeliveryCode,
+    resendDeliveryCode: state.resendDeliveryCode,
   })))
 
+  const courierProfile = useAuthStore(state => state.courierProfile)
+  const courierType = courierProfile?.courierType || 'EMPLOYEE'
+
+  const isPending = realAssignment?.assignmentStatus === 'PENDING'
+  const isContractor = courierType === 'CONTRACTOR'
+  const showAcceptReject = isPending && isContractor
+
+  const isMutationPending = actionPendingAssignmentId === assignmentId
+
+  const handleAccept = async () => {
+    if (!assignmentId) return
+    const success = await acceptAssignment(assignmentId)
+    if (success) {
+      Alert.alert('Успех', 'Заказ успешно принят!')
+      void refetchAssignment()
+    } else {
+      Alert.alert('Ошибка', actionError || 'Не удалось принять заказ')
+    }
+  }
+
+  const handleReject = async () => {
+    if (!assignmentId) return
+    const success = await rejectAssignment(assignmentId, 'Rejected by courier')
+    if (success) {
+      Alert.alert('Отклонено', 'Вы отклонили этот заказ')
+      navigation.goBack()
+    } else {
+      Alert.alert('Ошибка', actionError || 'Не удалось отклонить заказ')
+    }
+  }
+
   const order = useMemo<OrderView | null>(() => {
+    if (realOrder) {
+      return {
+        id: realOrder.orderId,
+        client: realOrder.recipientInfo?.name || 'Customer',
+        pickupAddress: realOrder.pickupAddress?.street || 'Astana Store',
+        deliveryAddress: realOrder.deliveryAddress?.street || 'Delivery Address',
+        earnings: realOrder.totalAmount || 1200,
+        distance: '2.4 km',
+        estimatedMin: 15,
+        pickupCode: realOrder.deliveryConfirmationCode || '000000',
+        clientPhone: realOrder.recipientInfo?.phone || '+7 777 123 45 67',
+        comment: realOrder.comment || 'No instructions',
+        parcelsCount: 1,
+        payment: 'Cashless',
+      }
+    }
+
     const bySeed = orders.find(item => item.id === orderId)
 
     if (bySeed) {
@@ -122,11 +229,77 @@ export function OrderDetailScreen({ navigation, route }: Props) {
     }
 
     return null
-  }, [dashboard, orderId, orders])
+  }, [realOrder, dashboard, orderId, orders])
 
   const isActive = activeOrderId === orderId
   const actionLabel = ACTIVE_STAGE_ACTION_LABEL[stage]
   const courierName = dashboard?.courier ? `${dashboard.courier.name} ${dashboard.courier.lastName}`.trim() : 'Ivan Petrov'
+
+  const transitionMeta = useMemo(() => {
+    if (!realAssignment) return null
+
+    const status = realAssignment.assignmentStatus
+    switch (status) {
+      case 'ASSIGNED':
+      case 'ACCEPTED':
+        return {
+          nextStatus: 'PICKED_UP' as const,
+          label: 'Mark Picked Up',
+          reason: 'courier-picked-up',
+          disabled: false,
+          isPlaceholder: false,
+          triggerOtpModal: false,
+        }
+      case 'PICKED_UP':
+        return {
+          nextStatus: 'IN_TRANSIT' as const,
+          label: 'Start Delivery',
+          reason: 'courier-departed',
+          disabled: false,
+          isPlaceholder: false,
+          triggerOtpModal: false,
+        }
+      case 'IN_TRANSIT':
+        return {
+          nextStatus: 'ARRIVED' as const,
+          label: 'Mark Arrived',
+          reason: 'courier-arrived',
+          disabled: false,
+          isPlaceholder: false,
+          triggerOtpModal: false,
+        }
+      case 'ARRIVED':
+        return {
+          nextStatus: null,
+          label: 'Enter Confirmation Code',
+          reason: '',
+          disabled: false,
+          isPlaceholder: false,
+          triggerOtpModal: true,
+        }
+      default:
+        return null
+    }
+  }, [realAssignment])
+
+  const isTransitioning = statusMutationAssignmentId === assignmentId
+
+  const handleTransition = async () => {
+    if (!assignmentId || !transitionMeta) return
+    if (transitionMeta.triggerOtpModal) {
+      setIsOtpModalVisible(true)
+      return
+    }
+    if (!transitionMeta.nextStatus) return
+    const success = await updateAssignmentStatus(
+      assignmentId,
+      transitionMeta.nextStatus,
+      transitionMeta.reason
+    )
+    if (success) {
+      void refetchAssignment()
+    }
+  }
 
   const handleAdvance = async () => {
     if (stage === 'delivered') {
@@ -139,22 +312,53 @@ export function OrderDetailScreen({ navigation, route }: Props) {
     }
   }
 
+  const [resending, setResending] = useState(false)
+  const handleResendOTP = async () => {
+    if (!assignmentId) return
+    setResending(true)
+    const success = await resendDeliveryCode(assignmentId)
+    setResending(false)
+    if (success) {
+      Alert.alert('Успех', 'Код подтверждения был отправлен повторно!')
+    } else {
+      Alert.alert('Ошибка', 'Не удалось отправить код повторно')
+    }
+  }
+
   const handleVerifyOTP = async () => {
     if (!otpCode.trim()) {
       Alert.alert('Ошибка', 'Пожалуйста, введите код подтверждения')
       return
     }
-    setIsVerifying(true)
-    const res = await verifyOTP(otpCode.trim())
-    setIsVerifying(false)
-    if (res.success) {
+    if (!assignmentId) return
+
+    const success = await verifyDeliveryCode(assignmentId, otpCode.trim())
+    if (success) {
       setIsOtpModalVisible(false)
       setOtpCode('')
       Alert.alert('Успех', 'Заказ успешно доставлен и подтвержден!')
       navigation.goBack()
     } else {
-      Alert.alert('Ошибка подтверждения', res.message || 'Неверный код')
+      Alert.alert('Ошибка подтверждения', deliveryCodeError || 'Неверный код')
     }
+  }
+
+  if ((isRealOrderLoading || isRealAssignmentLoading) && !order) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <View style={styles.topNav}>
+          <Pressable onPress={() => navigation.goBack()} style={styles.navIconBtn}>
+            <Ionicons name="arrow-back" size={18} color="#f4f4f5" />
+          </Pressable>
+          <Text style={styles.topTitle}>Order Details</Text>
+          <View style={styles.navIconBtn} />
+        </View>
+        <View style={styles.emptyWrap}>
+          <ActivityIndicator size="large" color={appTheme.colors.primary} />
+          <Text style={styles.emptyTitle}>Loading details...</Text>
+        </View>
+      </SafeAreaView>
+    )
   }
 
   if (!order) {
@@ -207,6 +411,31 @@ export function OrderDetailScreen({ navigation, route }: Props) {
           <Text style={styles.pickupClient}>{order.client}</Text>
           <Text style={styles.pickupAddress}>{order.pickupAddress}</Text>
         </View>
+
+        {realAssignment && (
+          <View style={styles.statusSection}>
+            <Text style={styles.statusSectionLabel}>STATUS</Text>
+            <View style={[
+              styles.statusSectionBadge,
+              realAssignment.assignmentStatus === 'PENDING' ? styles.statusPending :
+              ['ASSIGNED', 'ACCEPTED'].includes(realAssignment.assignmentStatus) ? styles.statusAssigned :
+              ['PICKED_UP', 'IN_TRANSIT', 'ARRIVED'].includes(realAssignment.assignmentStatus) ? styles.statusActive :
+              realAssignment.assignmentStatus === 'DELIVERED' ? styles.statusDelivered :
+              styles.statusCancelled
+            ]}>
+              <Text style={[
+                styles.statusSectionBadgeText,
+                realAssignment.assignmentStatus === 'PENDING' ? { color: '#ff9069' } :
+                ['ASSIGNED', 'ACCEPTED'].includes(realAssignment.assignmentStatus) ? { color: '#34d399' } :
+                ['PICKED_UP', 'IN_TRANSIT', 'ARRIVED'].includes(realAssignment.assignmentStatus) ? { color: '#f59e0b' } :
+                realAssignment.assignmentStatus === 'DELIVERED' ? { color: '#9997a1' } :
+                { color: '#ef706a' }
+              ]}>
+                {realAssignment.assignmentStatus}
+              </Text>
+            </View>
+          </View>
+        )}
 
         <View style={styles.authRow}>
           <View style={styles.authCardPrimary}>
@@ -314,9 +543,63 @@ export function OrderDetailScreen({ navigation, route }: Props) {
       </ScrollView>
 
       <View style={[styles.bottomActionWrap, { paddingBottom: insets.bottom + 8 }]}>
-        {isActive ? (
-          <Pressable style={styles.bottomActionBtn} onPress={handleAdvance}>
-            <Text style={styles.bottomActionText}>{actionLabel}</Text>
+        {(statusMutationError || actionError) && (
+          <View style={styles.inlineErrorBox}>
+            <Ionicons name="alert-circle-outline" size={14} color="#ef706a" />
+            <Text style={styles.inlineErrorText} numberOfLines={2}>
+              {statusMutationError || actionError}
+            </Text>
+          </View>
+        )}
+
+        {showAcceptReject ? (
+          <View style={styles.buttonBar}>
+            <Pressable
+              style={[styles.rejectBtnDetail, isMutationPending && styles.disabledBtn]}
+              onPress={handleReject}
+              disabled={isMutationPending}
+            >
+              <Text style={styles.rejectBtnTextDetail}>Reject</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.acceptBtnDetail, isMutationPending && styles.disabledBtn]}
+              onPress={handleAccept}
+              disabled={isMutationPending}
+            >
+              {isMutationPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.acceptBtnTextDetail}>Accept</Text>
+              )}
+            </Pressable>
+          </View>
+        ) : isPending && !isContractor ? (
+          <View style={styles.fallbackBox}>
+            <Ionicons name="hourglass-outline" size={18} color="#aeaaa7" />
+            <Text style={styles.fallbackText}>Waiting for dispatcher assignment...</Text>
+          </View>
+        ) : transitionMeta ? (
+          <Pressable
+            style={[
+              styles.bottomActionBtn,
+              (transitionMeta.disabled || isTransitioning) && styles.disabledBtn,
+              transitionMeta.isPlaceholder && styles.placeholderBtn,
+            ]}
+            onPress={handleTransition}
+            disabled={transitionMeta.disabled || isTransitioning}
+          >
+            {isTransitioning ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text
+                style={[
+                  styles.bottomActionText,
+                  transitionMeta.isPlaceholder && styles.placeholderBtnText,
+                ]}
+              >
+                {transitionMeta.label}
+              </Text>
+            )}
           </Pressable>
         ) : (
           <Pressable style={styles.bottomActionBtn} onPress={() => navigation.goBack()}>
@@ -349,8 +632,24 @@ export function OrderDetailScreen({ navigation, route }: Props) {
               maxLength={6}
               value={otpCode}
               onChangeText={setOtpCode}
-              editable={!isVerifying}
+              editable={!(verifyingDeliveryCodeAssignmentId === assignmentId) && !resending}
             />
+
+            {deliveryCodeError && (
+              <Text style={styles.modalErrorText}>{deliveryCodeError}</Text>
+            )}
+
+            <Pressable 
+              style={[styles.resendContainer, (resending || verifyingDeliveryCodeAssignmentId === assignmentId) && styles.disabledBtn]} 
+              onPress={handleResendOTP}
+              disabled={resending || verifyingDeliveryCodeAssignmentId === assignmentId}
+            >
+              {resending ? (
+                <ActivityIndicator size="small" color="#ff9069" />
+              ) : (
+                <Text style={styles.resendText}>Не пришел код? Отправить повторно</Text>
+              )}
+            </Pressable>
 
             <View style={styles.modalActions}>
               <Pressable
@@ -359,7 +658,7 @@ export function OrderDetailScreen({ navigation, route }: Props) {
                   setIsOtpModalVisible(false)
                   setOtpCode('')
                 }}
-                disabled={isVerifying}
+                disabled={verifyingDeliveryCodeAssignmentId === assignmentId || resending}
               >
                 <Text style={styles.modalBtnTextCancel}>Отмена</Text>
               </Pressable>
@@ -367,9 +666,9 @@ export function OrderDetailScreen({ navigation, route }: Props) {
               <Pressable
                 style={[styles.modalBtn, styles.modalBtnConfirm]}
                 onPress={handleVerifyOTP}
-                disabled={isVerifying}
+                disabled={verifyingDeliveryCodeAssignmentId === assignmentId || resending}
               >
-                {isVerifying ? (
+                {verifyingDeliveryCodeAssignmentId === assignmentId ? (
                   <ActivityIndicator size="small" color="#2d1b13" />
                 ) : (
                   <Text style={styles.modalBtnTextConfirm}>Подтвердить</Text>
@@ -857,5 +1156,153 @@ const styles = StyleSheet.create({
     color: '#2d1b13',
     fontSize: 14,
     fontWeight: '700',
+  },
+  buttonBar: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  acceptBtnDetail: {
+    flex: 1.5,
+    borderRadius: 16,
+    backgroundColor: '#cd5e3d',
+    minHeight: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#ff9069',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  rejectBtnDetail: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 113, 108, 0.45)',
+    backgroundColor: 'rgba(69, 30, 33, 0.15)',
+    minHeight: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  acceptBtnTextDetail: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  rejectBtnTextDetail: {
+    color: '#ff716c',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  disabledBtn: {
+    opacity: 0.6,
+  },
+  inlineErrorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 112, 106, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 112, 106, 0.3)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+    gap: 6,
+  },
+  inlineErrorText: {
+    color: '#ef706a',
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  fallbackBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1c1b18',
+    borderRadius: 16,
+    minHeight: 64,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#2b2a26',
+    gap: 10,
+  },
+  fallbackText: {
+    color: '#aeaaa7',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  statusSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#141311',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  statusSectionLabel: {
+    color: '#aeaaa7',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  statusSectionBadge: {
+    borderRadius: 99,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+  },
+  statusSectionBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  statusPending: {
+    backgroundColor: 'rgba(255, 144, 105, 0.12)',
+    borderColor: 'rgba(255, 144, 105, 0.25)',
+  },
+  statusAssigned: {
+    backgroundColor: 'rgba(52, 211, 153, 0.12)',
+    borderColor: 'rgba(52, 211, 153, 0.25)',
+  },
+  statusActive: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderColor: 'rgba(245, 158, 11, 0.25)',
+  },
+  statusDelivered: {
+    backgroundColor: 'rgba(153, 151, 161, 0.12)',
+    borderColor: 'rgba(153, 151, 161, 0.25)',
+  },
+  statusCancelled: {
+    backgroundColor: 'rgba(239, 112, 106, 0.12)',
+    borderColor: 'rgba(239, 112, 106, 0.25)',
+  },
+  placeholderBtn: {
+    backgroundColor: '#1b1b18',
+    borderColor: '#2b2a26',
+    borderWidth: 1,
+  },
+  placeholderBtnText: {
+    color: '#aeaaa7',
+  },
+  modalErrorText: {
+    color: '#ef706a',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  resendContainer: {
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resendText: {
+    color: '#ff9069',
+    fontSize: 13,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 })

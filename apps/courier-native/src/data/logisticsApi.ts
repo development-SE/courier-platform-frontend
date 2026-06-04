@@ -98,8 +98,10 @@ export async function listMyAssignments(
   accessToken: string,
   courierId: string,
   status?: AssignmentStatus,
+  page: number = 1,
+  pageSize: number = 20,
 ) {
-  let path = `/api/v1/logistics/assignments?courierId=${courierId}&page=1&pageSize=20`
+  let path = `/api/v1/logistics/assignments?courierId=${courierId}&page=${page}&pageSize=${pageSize}`
   if (status) {
     path += `&status=${status}`
   }
@@ -118,6 +120,7 @@ export async function updateAssignmentStatus(
   accessToken: string,
   assignmentId: string,
   newStatus: AssignmentStatus,
+  changedBy?: string,
   reason?: string,
 ) {
   return apiRequest<ApiResponse<AssignmentResponse>>(`/api/v1/logistics/assignments/${assignmentId}/status`, {
@@ -127,6 +130,7 @@ export async function updateAssignmentStatus(
     },
     json: {
       newStatus,
+      changedBy,
       reason: reason || 'status transition',
     },
   })
@@ -188,3 +192,59 @@ export async function getOrderDetails(accessToken: string, orderId: string) {
     },
   })
 }
+
+/**
+ * Accepts a pending assignment.
+ */
+export async function acceptAssignment(accessToken: string, assignmentId: string) {
+  return apiRequest<ApiResponse<AssignmentResponse>>(`/api/v1/logistics/assignments/${assignmentId}/accept`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+}
+
+/**
+ * Rejects a pending assignment.
+ */
+export async function rejectAssignment(accessToken: string, assignmentId: string, reason?: string) {
+  return apiRequest<ApiResponse<AssignmentResponse>>(`/api/v1/logistics/assignments/${assignmentId}/reject`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    json: reason ? { reason } : undefined,
+  })
+}
+
+/**
+ * Retrieves assignment status by ID.
+ */
+export async function getAssignment(accessToken: string, assignmentId: string) {
+  return apiRequest<ApiResponse<AssignmentResponse>>(`/api/v1/logistics/assignments/${assignmentId}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+}
+
+/**
+ * Resends the current delivery OTP or regenerates it after expiration.
+ */
+export async function resendDeliveryCode(
+  accessToken: string,
+  assignmentId: string,
+) {
+  return apiRequest<ApiResponse<any>>(
+    `/api/v1/logistics/assignments/${assignmentId}/resend-delivery-code`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  )
+}
+
