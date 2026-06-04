@@ -89,7 +89,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false)
   const [isAddingFromMap, setIsAddingFromMap] = useState(false)
   const mapRef = useRef<MapView | null>(null)
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const onRegionChangeComplete = async (newRegion: any) => {
     setRegion(newRegion)

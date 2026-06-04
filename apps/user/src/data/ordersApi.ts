@@ -216,3 +216,159 @@ export async function createFoodOrder(accessToken: string, params: CreateFoodOrd
   })
 }
 
+export async function getDeliveryConfirmationCode(accessToken: string, orderId: string) {
+  return apiRequest<ApiResponse<{ deliveryConfirmationCode: string }>>(`/api/v1/orders/${orderId}/delivery-confirmation-code`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+}
+
+export type TrackingState = {
+  currentStep: number // 0: Confirmed, 1: Preparing, 2: On the way, 3: Arrived, 4: Delivered
+  title: string
+  subtitle: string
+  statusColor: string
+  statusIcon: string // Feather glyph name
+  showConfirmationCode: boolean
+  isTerminal: boolean
+  terminalType?: 'CANCELLED' | 'REJECTED'
+}
+
+export function mapOrderStatusToTrackingState(status: string): TrackingState {
+  const normalized = (status || '').toUpperCase()
+  switch (normalized) {
+    case 'NEW':
+      return {
+        currentStep: 0,
+        title: 'Order placed',
+        subtitle: 'Your order has been received and is waiting for processing',
+        statusColor: '#B26B00',
+        statusIcon: 'clock',
+        showConfirmationCode: false,
+        isTerminal: false,
+      }
+    case 'ACCEPTED':
+      return {
+        currentStep: 1,
+        title: 'Order accepted',
+        subtitle: 'Our platform accepted your order and is preparing delivery',
+        statusColor: '#004397',
+        statusIcon: 'check-circle',
+        showConfirmationCode: false,
+        isTerminal: false,
+      }
+    case 'PREPARING':
+      return {
+        currentStep: 1,
+        title: 'Preparing parcel',
+        subtitle: 'Your parcel is being prepared for courier pickup',
+        statusColor: '#004397',
+        statusIcon: 'package',
+        showConfirmationCode: false,
+        isTerminal: false,
+      }
+    case 'READY':
+      return {
+        currentStep: 1,
+        title: 'Ready for pickup',
+        subtitle: 'The parcel is ready and waiting for the courier',
+        statusColor: '#004397',
+        statusIcon: 'package',
+        showConfirmationCode: false,
+        isTerminal: false,
+      }
+    case 'ASSIGNMENT_PENDING':
+      return {
+        currentStep: 1,
+        title: 'Courier assignment in progress',
+        subtitle: 'We are searching for a nearby courier to assign',
+        statusColor: '#B26B00',
+        statusIcon: 'clock',
+        showConfirmationCode: false,
+        isTerminal: false,
+      }
+    case 'ASSIGNED':
+      return {
+        currentStep: 1,
+        title: 'Courier assigned',
+        subtitle: 'A courier has been assigned and is heading to the pickup location',
+        statusColor: '#004397',
+        statusIcon: 'truck',
+        showConfirmationCode: false,
+        isTerminal: false,
+      }
+    case 'PICKED_UP':
+      return {
+        currentStep: 2,
+        title: 'Picked up',
+        subtitle: 'The courier has picked up your parcel and started the delivery',
+        statusColor: '#004397',
+        statusIcon: 'truck',
+        showConfirmationCode: false,
+        isTerminal: false,
+      }
+    case 'IN_TRANSIT':
+      return {
+        currentStep: 2,
+        title: 'Courier is on the way',
+        subtitle: 'Your parcel is in transit to the destination address',
+        statusColor: '#004397',
+        statusIcon: 'navigation',
+        showConfirmationCode: false,
+        isTerminal: false,
+      }
+    case 'DELIVERY_CONFIRMATION_PENDING':
+      return {
+        currentStep: 3,
+        title: 'Confirm delivery',
+        subtitle: 'Please share the confirmation code with your courier',
+        statusColor: '#A7391E',
+        statusIcon: 'shield',
+        showConfirmationCode: true,
+        isTerminal: false,
+      }
+    case 'DELIVERED':
+      return {
+        currentStep: 4,
+        title: 'Delivered',
+        subtitle: 'Your order was successfully delivered. Thank you!',
+        statusColor: '#2C4E2E',
+        statusIcon: 'check-circle',
+        showConfirmationCode: false,
+        isTerminal: false,
+      }
+    case 'CANCELLED':
+      return {
+        currentStep: 0,
+        title: 'Order cancelled',
+        subtitle: 'This order has been cancelled',
+        statusColor: '#6B7280',
+        statusIcon: 'x-circle',
+        showConfirmationCode: false,
+        isTerminal: true,
+        terminalType: 'CANCELLED',
+      }
+    case 'REJECTED':
+      return {
+        currentStep: 0,
+        title: 'Order rejected',
+        subtitle: 'This order has been rejected',
+        statusColor: '#EF4444',
+        statusIcon: 'slash',
+        showConfirmationCode: false,
+        isTerminal: true,
+        terminalType: 'REJECTED',
+      }
+    default:
+      return {
+        currentStep: 0,
+        title: 'Tracking order',
+        subtitle: 'We are updating your order status',
+        statusColor: '#6B7280',
+        statusIcon: 'help-circle',
+        showConfirmationCode: false,
+        isTerminal: false,
+      }
+  }
+}

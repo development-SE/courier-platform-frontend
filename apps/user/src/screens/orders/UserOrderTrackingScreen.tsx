@@ -15,7 +15,7 @@ import {
 } from 'react-native'
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { getUserOrder, type UserOrder, type UserOrderAddress } from '../../data/ordersApi'
+import { getUserOrder, type UserOrder, type UserOrderAddress, getDeliveryConfirmationCode, mapOrderStatusToTrackingState, type TrackingState } from '../../data/ordersApi'
 import { getOrderAssignment, getCourierLocation, autoAssignOrder } from '../../data/logisticsApi'
 
 type UserOrderTrackingScreenProps = {
@@ -24,30 +24,15 @@ type UserOrderTrackingScreenProps = {
   onBackPress?: () => void
   onUnauthorized?: () => void
 }
-
-const STATUS_CONFIG: Record<
-  string,
-  {
-    sectionLabel: string
-    color: string
-    icon: keyof typeof Feather.glyphMap
-  }
-> = {
-  NEW: { sectionLabel: 'Waiting', color: '#B26B00', icon: 'clock' },
-  ACCEPTED: { sectionLabel: 'In progress', color: '#004397', icon: 'check-circle' },
-  PREPARING: { sectionLabel: 'In progress', color: '#004397', icon: 'package' },
-  READY: { sectionLabel: 'In progress', color: '#004397', icon: 'package' },
-  ASSIGNED: { sectionLabel: 'In progress', color: '#004397', icon: 'truck' },
-  PICKED_UP: { sectionLabel: 'In progress', color: '#004397', icon: 'truck' },
-  IN_TRANSIT: { sectionLabel: 'On the way', color: '#004397', icon: 'navigation' },
-  DELIVERY_CONFIRMATION_PENDING: { sectionLabel: 'Confirming', color: '#A7391E', icon: 'shield' },
-  DELIVERED: { sectionLabel: 'Delivered', color: '#2C4E2E', icon: 'check-circle' },
-  CANCELLED: { sectionLabel: 'Cancelled', color: '#6B7280', icon: 'x-circle' },
-  REJECTED: { sectionLabel: 'Rejected', color: '#EF4444', icon: 'slash' },
-}
-
+const progressSteps = [
+  { key: 'confirmed', label: 'CONFIRMED' },
+  { key: 'preparing', label: 'PREPARING' },
+  { key: 'onWay', label: 'ON THE WAY' },
+  { key: 'arrived', label: 'ARRIVED' },
+  { key: 'delivered', label: 'DELIVERED' },
+] as const
 const SERVICE_TYPE_LABEL: Record<string, string> = {
-  FOOD: 'Food delivery',
+  FOOD: 'Parcel delivery',
   STANDARD: 'Courier',
   EXPRESS: 'Express',
   SCHEDULED: 'Scheduled',
@@ -214,7 +199,14 @@ export function UserOrderTrackingScreen({
   const [courierOnline, setCourierOnline] = useState<boolean>(false)
 
   useEffect(() => {
-    setOrder(initialOrder)
+    setOrder(prev => {
+      if (prev && prev.orderId === initialOrder.orderId) {
+        // Keep the local state since it is more up-to-date from polling
+        // and contains the deliveryConfirmationCode.
+        return prev
+      }
+      return initialOrder
+    })
   }, [initialOrder])
 
   useEffect(() => {
@@ -224,7 +216,7 @@ export function UserOrderTrackingScreen({
     }
 
     let isActive = true
-    let pollTimer: NodeJS.Timeout
+    let pollTimer: ReturnType<typeof setTimeout>
 
     const poll = async (isInitial = false) => {
       if (isInitial) setIsLoading(true)
@@ -251,9 +243,18 @@ export function UserOrderTrackingScreen({
 
         const latestOrder = orderRes.data.data
         if (latestOrder) {
+          let code: string | undefined = undefined
+          if (latestOrder.status === 'DELIVERY_CONFIRMATION_PENDING') {
+            const codeRes = await getDeliveryConfirmationCode(accessToken, initialOrder.orderId)
+            if (codeRes.ok && codeRes.data?.success && codeRes.data?.data) {
+              code = codeRes.data.data.deliveryConfirmationCode
+            }
+          }
+
           setOrder(prev => ({
             ...prev,
-            ...latestOrder
+            ...latestOrder,
+            deliveryConfirmationCode: code || latestOrder.deliveryConfirmationCode || prev.deliveryConfirmationCode
           }))
           
           if (latestOrder.status === 'NEW') {
@@ -493,7 +494,39 @@ export function UserOrderTrackingScreen({
     }),
   ).current
 
-  const status = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.NEW
+  const trackingState = useMemo(() => mapOrderStatusToTrackingState(order.status), [order.status])
+  const status = useMemo(() => ({
+    color: trackingState.statusColor,
+    icon: trackingState.statusIcon as keyof typeof Feather.glyphMap,
+    sectionLabel: trackingState.title
+  }), [trackingState])
+
+  const completedStepCount = useMemo(() => {
+    if (trackingState.isTerminal) {
+      return 0
+    }
+    return trackingState.currentStep === 4 ? 5 : trackingState.currentStep
+  }, [trackingState])
+
+  const activeStepIndex = useMemo(() => {
+    if (trackingState.isTerminal) {
+      return -1
+    }
+    return trackingState.currentStep === 4 ? -1 : trackingState.currentStep
+  }, [trackingState])
+
+  const progressPercent = useMemo(() => {
+    if (trackingState.isTerminal) return 0
+    const step = trackingState.currentStep
+    switch (step) {
+      case 0: return 5
+      case 1: return 28
+      case 2: return 52
+      case 3: return 76
+      case 4: return 100
+      default: return 0
+    }
+  }, [trackingState])
 
   const routeLineCoords = useMemo(() => {
     if (routeCoords.length > 1) return routeCoords
@@ -627,6 +660,72 @@ export function UserOrderTrackingScreen({
             contentContainerStyle={styles.cardContent}
           >
 
+            {/* Progress steps bar */}
+            <View style={styles.progressBlock}>
+              <View style={styles.progressTrack}>
+                <View style={styles.progressBase} />
+                <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+
+                {progressSteps.map((step, index) => {
+                  const isComplete = index < completedStepCount
+                  const isActive = index === activeStepIndex
+
+                  return (
+                    <View key={step.key} style={styles.progressNodeWrap}>
+                      <View
+                        style={[
+                          styles.progressNode,
+                          isComplete && styles.progressNodeComplete,
+                          isActive && styles.progressNodeActive,
+                          isActive && {
+                            backgroundColor: trackingState.statusColor,
+                            shadowColor: trackingState.statusColor,
+                          },
+                        ]}
+                      >
+                        {isComplete ? <Feather name="check" size={9} color="#ffffff" /> : null}
+                        {isActive && step.key === 'preparing' ? (
+                          <Feather name="package" size={10} color="#ffffff" />
+                        ) : null}
+                        {isActive && step.key === 'onWay' ? (
+                          <MaterialCommunityIcons name="bike-fast" size={11} color="#ffffff" />
+                        ) : null}
+                        {isActive && step.key === 'arrived' ? (
+                          <Feather name="map-pin" size={10} color="#ffffff" />
+                        ) : null}
+                        {isActive && step.key === 'delivered' ? (
+                          <Feather name="check" size={10} color="#ffffff" />
+                        ) : null}
+                      </View>
+                    </View>
+                  )
+                })}
+              </View>
+
+              <View style={styles.progressLabels}>
+                {progressSteps.map((step, index) => {
+                  const isActive = index === activeStepIndex
+
+                  return (
+                    <Text
+                      key={step.key}
+                      allowFontScaling={false}
+                      style={[
+                        styles.progressLabel,
+                        index < completedStepCount && styles.progressLabelComplete,
+                        isActive && styles.progressLabelActive,
+                        isActive && { color: trackingState.statusColor },
+                      ]}
+                    >
+                      {step.label}
+                    </Text>
+                  )
+                })}
+              </View>
+            </View>
+
+            <View style={styles.divider} />
+
             <View style={styles.summaryRow}>
               <View style={styles.summaryChip}>
                 <Text style={styles.summaryChipLabel}>Type</Text>
@@ -699,12 +798,13 @@ export function UserOrderTrackingScreen({
               </>
             ) : null}
 
-            {order.deliveryConfirmationCode ? (
+            {trackingState.showConfirmationCode && order.deliveryConfirmationCode ? (
               <>
                 <View style={styles.divider} />
                 <View style={styles.codeCard}>
                   <Text style={styles.codeLabel}>Delivery confirmation code</Text>
                   <Text style={styles.codeValue}>{order.deliveryConfirmationCode}</Text>
+                  <Text style={styles.codeSubtitle}>Share this code with your courier</Text>
                 </View>
               </>
             ) : null}
@@ -1053,5 +1153,84 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginTop: 4,
     letterSpacing: 1.2,
+  },
+  codeSubtitle: {
+    color: '#A7391E',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  progressBlock: {
+    marginVertical: 4,
+    gap: 12,
+  },
+  progressTrack: {
+    height: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  progressBase: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#E6E8EA',
+  },
+  progressFill: {
+    position: 'absolute',
+    left: 12,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#446744',
+  },
+  progressNodeWrap: {
+    width: 32,
+    alignItems: 'center',
+  },
+  progressNode: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#E0E3E5',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  progressNodeComplete: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#446744',
+    borderWidth: 0,
+  },
+  progressNodeActive: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0,
+  },
+  progressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  progressLabel: {
+    width: 60,
+    fontSize: 8,
+    lineHeight: 11,
+    fontWeight: '700',
+    color: '#8D776F',
+    textAlign: 'center',
+  },
+  progressLabelComplete: {
+    color: '#446744',
+  },
+  progressLabelActive: {
+    fontWeight: '900',
   },
 })

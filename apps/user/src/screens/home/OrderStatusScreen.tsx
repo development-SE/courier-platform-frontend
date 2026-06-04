@@ -26,7 +26,7 @@ import * as Location from 'expo-location'
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { calculateRoute, decodeRoutePolyline, RoutePoint } from '../../data/routesApi'
-import { getUserOrder } from '../../data/ordersApi'
+import { getUserOrder, mapOrderStatusToTrackingState, type TrackingState } from '../../data/ordersApi'
 import { getOrderAssignment, getCourierLocation, autoAssignOrder } from '../../data/logisticsApi'
 
 type OrderStatusScreenProps = {
@@ -74,7 +74,8 @@ const courierStartLocation = {
 const progressSteps = [
   { key: 'confirmed', label: 'CONFIRMED' },
   { key: 'preparing', label: 'PREPARING' },
-  { key: 'pickedUp', label: 'PICKED\nUP' },
+  { key: 'onWay', label: 'ON THE WAY' },
+  { key: 'arrived', label: 'ARRIVED' },
   { key: 'delivered', label: 'DELIVERED' },
 ] as const
 
@@ -134,7 +135,7 @@ const statusPresentation: Record<
 > = {
   'Order received': {
     title: 'Confirmed your order',
-    subtitle: 'The kitchen is recieved your order',
+    subtitle: 'Your order has been received and is being processed',
     accentColor: '#a7391e',
     milestoneIndex: 1,
     etaStatusText: 'Preparing your order',
@@ -144,7 +145,7 @@ const statusPresentation: Record<
   },
   'Courier assigned': {
     title: 'Confirmed your order',
-    subtitle: 'The kitchen is recieved your order',
+    subtitle: 'Your order has been received and a courier is assigned',
     accentColor: '#a7391e',
     milestoneIndex: 1,
     etaStatusText: 'Preparing your order',
@@ -184,7 +185,7 @@ const statusPresentation: Record<
   },
   Delivered: {
     title: 'Order delivered',
-    subtitle: 'Enjoy your meal! Please take a moment to rate your experience.',
+    subtitle: 'Your order has been delivered! Please take a moment to rate your experience.',
     accentColor: '#446744',
     milestoneIndex: 3,
     etaStatusText: 'Delivered successfully',
@@ -218,6 +219,7 @@ export function OrderStatusScreen({
   const [distanceMeters, setDistanceMeters] = useState(4200)
   const [durationSeconds, setDurationSeconds] = useState(50 * 60)
   const [detailedStatus, setDetailedStatus] = useState<DetailedStatus>('Order received')
+  const [orderStatus, setOrderStatus] = useState<string>('NEW')
   const [courierId, setCourierId] = useState<string | null>(null)
   const [realCourierLocation, setRealCourierLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [courierOnline, setCourierOnline] = useState<boolean>(false)
@@ -278,38 +280,46 @@ export function OrderStatusScreen({
     [collapsedHeight, topCoverHeight],
   )
 
-  const currentStatusUi = statusPresentation[detailedStatus]
+  const trackingState = useMemo(() => mapOrderStatusToTrackingState(orderStatus), [orderStatus])
+
+  const currentStatusUi = useMemo(() => {
+    const s = orderStatus.toUpperCase()
+    const etaMode = ['DELIVERED', 'CANCELLED', 'REJECTED'].includes(s)
+      ? 'delivered'
+      : ['NEW', 'ACCEPTED', 'PREPARING', 'READY', 'ASSIGNMENT_PENDING'].includes(s)
+      ? 'preparing'
+      : 'liveRoute'
+
+    return {
+      title: trackingState.title,
+      subtitle: trackingState.subtitle,
+      accentColor: trackingState.statusColor,
+      milestoneIndex: trackingState.currentStep,
+      etaStatusText: trackingState.title,
+      etaMode,
+      highlightActiveLabel: etaMode === 'preparing',
+      cardVariant: etaMode === 'delivered' ? 'delivered' : ('eta' as const),
+    }
+  }, [trackingState, orderStatus])
+
   const animatedCourierCoordinate = courierMarker as unknown as LatLng
   const completedStepCount = useMemo(() => {
-    switch (detailedStatus) {
-      case 'Picked up':
-        return 3
-      case 'Delivered':
-        return 4
-      case 'Going to restaurant':
-      case 'On the way':
-        return 2
-      default:
-        return 1
+    if (trackingState.isTerminal) {
+      return 0
     }
-  }, [detailedStatus])
+    return trackingState.currentStep === 4 ? 5 : trackingState.currentStep
+  }, [trackingState])
 
   const activeStepIndex = useMemo(() => {
-    switch (detailedStatus) {
-      case 'Order received':
-      case 'Courier assigned':
-        return 1
-      case 'Going to restaurant':
-      case 'On the way':
-        return 2
-      default:
-        return -1
+    if (trackingState.isTerminal) {
+      return -1
     }
-  }, [detailedStatus])
+    return trackingState.currentStep === 4 ? -1 : trackingState.currentStep
+  }, [trackingState])
 
   const progressWidth = progressValue.interpolate({
-    inputRange: [0, 1, 2, 3],
-    outputRange: ['5%', '31%', '65%', '100%'],
+    inputRange: [0, 1, 2, 3, 4],
+    outputRange: ['5%', '28%', '52%', '76%', '100%'],
   })
 
   const utensilsTranslateY = utensilsBounce.interpolate({
@@ -351,10 +361,9 @@ export function OrderStatusScreen({
       return '25-35'
     }
 
+    const s = orderStatus.toUpperCase()
     if (
-      detailedStatus === 'Going to restaurant' ||
-      detailedStatus === 'Picked up' ||
-      detailedStatus === 'On the way'
+      ['ASSIGNED', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING'].includes(s)
     ) {
       return '10-15'
     }
@@ -363,7 +372,7 @@ export function OrderStatusScreen({
     const lower = Math.max(0, minutes - 5)
     const upper = minutes + 5
     return `${lower}-${upper}`
-  }, [currentStatusUi.etaMode, detailedStatus, durationSeconds])
+  }, [currentStatusUi.etaMode, orderStatus, durationSeconds])
 
   const initialRegion = useMemo(() => {
     const latitude = (restaurantCoords.latitude + customerCoords.latitude) / 2
@@ -618,6 +627,8 @@ export function OrderStatusScreen({
     setIsDeliveryCompleteVisible(false)
     setSelectedRating(0)
     setDetailedStatus('Order received')
+    setOrderStatus('ACCEPTED')
+    setDeliveryCode(null)
     setMilestoneIndex(1)
     animateProgressTo(1)
 
@@ -626,6 +637,7 @@ export function OrderStatusScreen({
     statusTimersRef.current = [
       setTimeout(() => {
         setDetailedStatus('On the way')
+        setOrderStatus('IN_TRANSIT')
         setMilestoneIndex(2)
         animateProgressTo(2)
 
@@ -644,14 +656,17 @@ export function OrderStatusScreen({
       }, 4500),
       setTimeout(() => {
         setDetailedStatus('Picked up')
-        setMilestoneIndex(2)
-        animateProgressTo(2)
+        setOrderStatus('DELIVERY_CONFIRMATION_PENDING')
+        setDeliveryCode('482910')
+        setMilestoneIndex(3)
+        animateProgressTo(3)
       }, 7000),
       setTimeout(() => {
         setDetailedStatus('Delivered')
-        setMilestoneIndex(3)
+        setOrderStatus('DELIVERED')
+        setMilestoneIndex(4)
         setDurationSeconds(0)
-        animateProgressTo(3)
+        animateProgressTo(4)
 
         const destination = routeCoordinates[routeCoordinates.length - 1] ?? customerLocation
         courierMarker
@@ -716,7 +731,7 @@ export function OrderStatusScreen({
     }
 
     let isActive = true
-    let pollTimer: NodeJS.Timeout
+    let pollTimer: ReturnType<typeof setTimeout>
 
     const poll = async () => {
       try {
@@ -776,27 +791,9 @@ export function OrderStatusScreen({
         if (rawStatus === 'NEW') {
           void autoAssignOrder(accessToken, orderId)
         }
-        let mappedStatus: DetailedStatus = 'Order received'
-        let nextMilestone = 1
-
-        if (['NEW', 'ACCEPTED', 'PREPARING', 'READY'].includes(rawStatus)) {
-          mappedStatus = 'Order received'
-          nextMilestone = 1
-        } else if (rawStatus === 'ASSIGNED') {
-          mappedStatus = 'Courier assigned'
-          nextMilestone = 2
-        } else if (rawStatus === 'PICKED_UP') {
-          mappedStatus = 'Picked up'
-          nextMilestone = 2
-        } else if (['IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING'].includes(rawStatus)) {
-          mappedStatus = 'On the way'
-          nextMilestone = 2
-        } else if (rawStatus === 'DELIVERED') {
-          mappedStatus = 'Delivered'
-          nextMilestone = 3
-        }
-
-        setDetailedStatus(mappedStatus)
+        setOrderStatus(rawStatus)
+        const nextTrackingState = mapOrderStatusToTrackingState(rawStatus)
+        const nextMilestone = nextTrackingState.currentStep
         setMilestoneIndex(nextMilestone)
         animateProgressTo(nextMilestone)
 
@@ -906,21 +903,21 @@ export function OrderStatusScreen({
   }
 
   const currentCourierMessage = useMemo(() => {
-    switch (detailedStatus) {
-      case 'Courier assigned':
-        return `${courierName} is assigned to your order.`
-      case 'Going to restaurant':
-        return `${courierName} is on the way with your order.`
-      case 'Picked up':
-        return `${courierName} picked up your order.`
-      case 'On the way':
-        return `${courierName} is on the way to your address.`
-      case 'Delivered':
+    switch (orderStatus.toUpperCase()) {
+      case 'ASSIGNED':
+        return `Courier ${courierName} is assigned to your parcel.`
+      case 'PICKED_UP':
+        return `Courier ${courierName} picked up your parcel.`
+      case 'IN_TRANSIT':
+        return `Courier ${courierName} is on the way to your address.`
+      case 'DELIVERY_CONFIRMATION_PENDING':
+        return `Courier ${courierName} has arrived. Please share confirmation code.`
+      case 'DELIVERED':
         return 'Delivery completed successfully.'
       default:
-        return 'The restaurant has received your order.'
+        return 'Your parcel delivery request is being processed.'
     }
-  }, [detailedStatus])
+  }, [orderStatus])
 
   const scrollChatToBottom = useCallback(() => {
     requestAnimationFrame(() => {
@@ -1053,7 +1050,7 @@ export function OrderStatusScreen({
               Order delivered
             </Text>
             <Text allowFontScaling={false} style={styles.deliveredSubtitle}>
-              Enjoy your meal! Please take a moment to rate your experience.
+              Your order has been delivered! Please take a moment to rate your experience.
             </Text>
           </View>
 
@@ -1100,7 +1097,7 @@ export function OrderStatusScreen({
         ]}
       >
         <MaterialCommunityIcons
-          name={currentStatusUi.etaMode === 'preparing' ? 'silverware-fork-knife' : 'bike-fast'}
+          name={currentStatusUi.etaMode === 'preparing' ? 'package-variant-closed' : 'bike-fast'}
           size={currentStatusUi.etaMode === 'preparing' ? 22 : 24}
           color="#862208"
         />
@@ -1268,7 +1265,7 @@ export function OrderStatusScreen({
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => Alert.alert('Restaurant', restaurantName)}
+            onPress={() => Alert.alert('Sender', restaurantName)}
             style={styles.detailsInlineCard}
           >
             <View style={styles.detailsInlineLeft}>
@@ -1286,7 +1283,7 @@ export function OrderStatusScreen({
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => Alert.alert('Restaurant contact', '+1 (555) 123-4567')}
+            onPress={() => Alert.alert('Sender contact', '+1 (555) 123-4567')}
             style={styles.detailsInlineCard}
           >
             <View style={styles.detailsInlineLeft}>
@@ -1691,7 +1688,7 @@ export function OrderStatusScreen({
               Order delivered
             </Text>
             <Text allowFontScaling={false} style={styles.completionSubtitle}>
-              Enjoy your meal. Thanks for{'\n'}choosing us!
+              Your order has been delivered.{' '}Thanks for{'\n'}choosing us!
             </Text>
           </View>
 
@@ -1906,16 +1903,30 @@ export function OrderStatusScreen({
                         >
                           {isComplete ? <Feather name="check" size={11} color="#ffffff" /> : null}
                           {isActive && step.key === 'preparing' ? (
+                            <Feather
+                              name="package"
+                              size={12}
+                              color="#ffffff"
+                            />
+                          ) : null}
+                          {isActive && step.key === 'onWay' ? (
                             <MaterialCommunityIcons
-                              name="silverware-fork-knife"
+                              name="bike-fast"
                               size={14}
                               color="#ffffff"
                             />
                           ) : null}
-                          {isActive && step.key === 'pickedUp' ? (
-                            <MaterialCommunityIcons
-                              name="bike-fast"
-                              size={14}
+                          {isActive && step.key === 'arrived' ? (
+                            <Feather
+                              name="map-pin"
+                              size={12}
+                              color="#ffffff"
+                            />
+                          ) : null}
+                          {isActive && step.key === 'delivered' ? (
+                            <Feather
+                              name="check"
+                              size={12}
                               color="#ffffff"
                             />
                           ) : null}
@@ -1947,6 +1958,14 @@ export function OrderStatusScreen({
                   })}
                 </View>
               </View>
+
+              {trackingState.showConfirmationCode && deliveryCode ? (
+                <View style={styles.codeCard}>
+                  <Text style={styles.codeLabel}>Delivery confirmation code</Text>
+                  <Text style={styles.codeValue}>{deliveryCode}</Text>
+                  <Text style={styles.codeSubtitle}>Share this code with your courier</Text>
+                </View>
+              ) : null}
 
               <View style={styles.quickActions}>
                 <Pressable
@@ -2065,6 +2084,37 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#f7f9fb',
+  },
+  codeCard: {
+    borderRadius: 20,
+    backgroundColor: '#FFF3EE',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginTop: 16,
+  },
+  codeLabel: {
+    color: '#A7391E',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  codeValue: {
+    color: '#A7391E',
+    fontSize: 32,
+    lineHeight: 38,
+    fontWeight: '900',
+    marginTop: 4,
+    textAlign: 'center',
+    letterSpacing: 2,
+  },
+  codeSubtitle: {
+    color: '#A7391E',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500',
+    marginTop: 4,
+    textAlign: 'center',
   },
   pushBanner: {
     position: 'absolute',

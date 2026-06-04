@@ -303,7 +303,7 @@ export function UserProfileScreen({
             },
           ]}
         >
-          <SettingsScreen safeBottom={insets.bottom} onBackPress={closeSettings} />
+          <SettingsScreen safeBottom={insets.bottom} onBackPress={closeSettings} accessToken={accessToken} />
         </Animated.View>
       )}
     </View>

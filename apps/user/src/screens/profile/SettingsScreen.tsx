@@ -28,6 +28,7 @@ import { LanguageScreen, type LanguageCode } from './LanguageScreen'
 type SettingsScreenProps = {
   onBackPress: () => void
   safeBottom: number
+  accessToken?: string
 }
 
 type SettingsRowProps = {
@@ -40,6 +41,7 @@ type SettingsRowProps = {
 export function SettingsScreen({
   onBackPress,
   safeBottom,
+  accessToken,
 }: SettingsScreenProps) {
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
@@ -515,7 +517,7 @@ export function SettingsScreen({
             },
           ]}
         >
-          <UserAddressScreen onBackPress={closeAddress} onConfirmPress={closeAddress} />
+          <UserAddressScreen onBackPress={closeAddress} onConfirmPress={closeAddress} accessToken={accessToken || ''} />
         </Animated.View>
       )}
 
