@@ -123,6 +123,9 @@ export async function updateAssignmentStatus(
   changedBy?: string,
   reason?: string,
 ) {
+  if (newStatus === 'ACCEPTED' || newStatus === 'REJECTED') {
+    throw new Error(`PATCH /status cannot be used for ${newStatus}. Use acceptAssignment or rejectAssignment instead.`)
+  }
   return apiRequest<ApiResponse<AssignmentResponse>>(`/api/v1/logistics/assignments/${assignmentId}/status`, {
     method: 'PATCH',
     headers: {

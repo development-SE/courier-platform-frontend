@@ -1,25 +1,58 @@
-import { createLocalCredentialsAuthUseCases } from '@core/use-cases/auth/localCredentialsAuth'
-import { AUTH_CREDENTIALS, AUTH_STORAGE_KEY } from '../mock/auth'
 import { getStorageItem, removeStorageItem, setStorageItem } from '../platform/storage'
 
-const authUseCases = createLocalCredentialsAuthUseCases({
-  storage: {
-    getItem: (key, scope) => getStorageItem(key, scope),
-    setItem: (key, value, scope) => setStorageItem(key, value, scope),
-    removeItem: (key, scope) => removeStorageItem(key, scope),
-  },
-  credentials: AUTH_CREDENTIALS,
-  storageKey: AUTH_STORAGE_KEY,
-})
+const GATEWAY = 'http://localhost:8080'
+export const AUTH_STORAGE_KEY = 'swiftdeliver_courier_auth'
 
-export function signInWithCredentials(login, password) {
-  return authUseCases.signInWithCredentials(login, password)
+// Returns { accessToken, role } on success, throws on failure
+export async function signInWithCredentials(email, password) {
+  const res = await fetch(`${GATEWAY}/api/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+
+  let body
+  try {
+    body = await res.json()
+  } catch {
+    throw new Error('Сервер недоступен')
+  }
+
+  if (!res.ok) {
+    throw new Error(body?.message || body?.error || 'Неверный email или пароль')
+  }
+
+  const session = body?.data ?? body
+  if (!session?.accessToken) {
+    throw new Error('Неверный email или пароль')
+  }
+
+  const { accessToken, refreshToken, role, expiresAt } = session
+  setStorageItem(AUTH_STORAGE_KEY, JSON.stringify({ accessToken, refreshToken, role, expiresAt }))
+  return { accessToken, role }
 }
 
 export function isAuthorized() {
-  return authUseCases.isAuthorized()
+  const raw = getStorageItem(AUTH_STORAGE_KEY)
+  if (!raw) return false
+  try {
+    const { accessToken } = JSON.parse(raw)
+    return Boolean(accessToken)
+  } catch {
+    return false
+  }
+}
+
+export function getSession() {
+  const raw = getStorageItem(AUTH_STORAGE_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
 }
 
 export function signOut() {
-  authUseCases.signOut()
+  removeStorageItem(AUTH_STORAGE_KEY)
 }

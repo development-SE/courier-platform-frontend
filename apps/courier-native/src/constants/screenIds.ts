@@ -1,6 +1,7 @@
 export const SCREEN_IDS = Object.freeze({
   SIGN_IN: 'SignInScreen',
   SIGN_UP: 'SignUpScreen',
+  CREATE_COURIER_PROFILE: 'CreateCourierProfileScreen',
   DASHBOARD: 'DashboardScreen',
   ORDERS: 'OrdersScreen',
   ORDER_DETAIL: 'OrderDetailScreen',

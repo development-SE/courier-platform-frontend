@@ -6,6 +6,11 @@ import type { DeviceRegistrationPayload } from '../data/notificationApi'
 type NotificationsModule = typeof import('expo-notifications')
 
 export async function configurePushNotifications() {
+  if (isExpoGo()) {
+    console.log('[PushNotifications] Skipped configurePushNotifications: running in Expo Go.')
+    return
+  }
+
   const Notifications = await import('expo-notifications')
 
   Notifications.setNotificationHandler({
@@ -35,6 +40,17 @@ export async function buildExpoNotificationDevicePayload(
   if (isWeb) {
     console.log('[PushNotifications] Skipped notification token payload: running in web.')
     return null
+  }
+
+  if (isExpoGo()) {
+    console.log('[PushNotifications] Skipped notification token payload: running in Expo Go.')
+    return {
+      deviceId,
+      platform: Platform.OS === 'ios' || Platform.OS === 'android' ? Platform.OS : 'web',
+      provider: 'expo',
+      pushToken: `ExponentPushToken[mock-expo-go-${deviceId.slice(-6)}]`,
+      appVersion: Constants.expoConfig?.version ?? '1.0.0',
+    }
   }
 
   try {

@@ -77,3 +77,21 @@ export async function refreshSessionWithBackend(refreshToken: string) {
     json: { refreshToken },
   })
 }
+
+export async function logout(accessToken: string) {
+  return apiRequest<ApiResponse<any>>('/api/v1/auth/logout', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+}
+
+export async function logoutAll(accessToken: string) {
+  return apiRequest<ApiResponse<any>>('/api/v1/auth/logout-all', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+}

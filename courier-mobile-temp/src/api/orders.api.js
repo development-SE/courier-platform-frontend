@@ -2,7 +2,7 @@ import { apiClient } from './client'
 
 export const ordersApi = {
   list: async (page = 1, pageSize = 10) => {
-    const res = await apiClient.get(`/orders?page=${page}&pageSize=${pageSize}`)
+    const res = await apiClient.get(`/orders?page=${page}&size=${pageSize}`)
     return res.data
   },
 
@@ -71,7 +71,7 @@ export const ordersApi = {
   },
 
   cancel: async (id) => {
-    const res = await apiClient.put(`/orders/${id}/cancel`)
+    const res = await apiClient.patch(`/orders/${id}/status`, { status: 'CANCELLED' })
     return res.data
   },
 }

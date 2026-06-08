@@ -53,6 +53,14 @@ export function createAddress(accessToken: string, data: CreateAddressRequest) {
   })
 }
 
+export function updateAddress(accessToken: string, id: string, data: CreateAddressRequest) {
+  return apiRequest<AddressResponse>(`/api/v1/users/me/addresses/${id}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    json: data,
+  })
+}
+
 export function deleteAddress(accessToken: string, id: string) {
   return apiRequest<null>(`/api/v1/users/me/addresses/${id}`, {
     method: 'DELETE',

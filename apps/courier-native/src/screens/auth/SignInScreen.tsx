@@ -34,17 +34,19 @@ function SocialButton({ label, icon }: SocialButtonProps) {
   )
 }
 
-export function SignInScreen({ navigation, loadingOnly = false }: Props) {
+export function SignInScreen({ navigation, route, loadingOnly = false }: Props) {
   const signIn = useAuthStore(state => state.signIn)
   const insets = useSafeAreaInsets()
   const { height: windowHeight } = useWindowDimensions()
-  const [login, setLogin] = useState('courier')
-  const [password, setPassword] = useState('123456')
+  const [login, setLogin] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const heroBaseHeight = Math.max(208, Math.min(256, Math.round(windowHeight * 0.29)))
   const heroHeight = heroBaseHeight + insets.top
   const panelBottom = Math.max(14, insets.bottom + 4)
+
+  const verifyEmailNotice = route?.params?.verifyEmailNotice
 
   const handleSignIn = async () => {
     if (loading) return
@@ -53,6 +55,10 @@ export function SignInScreen({ navigation, loadingOnly = false }: Props) {
     try {
       const result = await signIn(login, password)
       if (!result.ok) {
+        if (result.reason === 'NO_COURIER_PROFILE') {
+          navigation.navigate(SCREEN_IDS.CREATE_COURIER_PROFILE, { email: login.trim(), password })
+          return
+        }
         setError(result.message || 'Invalid login or password')
       }
     } catch (err: any) {
@@ -86,6 +92,13 @@ export function SignInScreen({ navigation, loadingOnly = false }: Props) {
         <View style={[styles.panel, { paddingBottom: panelBottom }]}>
           <Text style={styles.welcome}>Welcome!</Text>
           <Text style={styles.subtitle}>Log in. Let's deliver.</Text>
+
+          {verifyEmailNotice && (
+            <View style={styles.noticeBanner}>
+              <Ionicons name="mail-outline" size={14} color="#c8f7b8" />
+              <Text style={styles.noticeText}>Check your email and verify your account before signing in.</Text>
+            </View>
+          )}
 
           <TextInput
             value={login}
@@ -198,6 +211,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 13,
     marginBottom: 14,
+  },
+  noticeBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: '#1e3a1a',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginBottom: 10,
+  },
+  noticeText: {
+    color: '#c8f7b8',
+    fontSize: 12,
+    lineHeight: 16,
+    flex: 1,
   },
   input: {
     height: 44,

@@ -97,6 +97,7 @@ type UserHomeScreenProps = {
   onAddressPress?: () => void
   onNotificationsPress?: () => void
   unreadNotificationsCount?: number
+  deliveryAddress?: string
   onOrdersPress?: () => void
   onCartPress?: () => void
   onProfilePress?: () => void
@@ -113,6 +114,7 @@ export function UserHomeScreen({
   onAddressPress,
   onNotificationsPress,
   unreadNotificationsCount = 0,
+  deliveryAddress,
   onOrdersPress,
   onCartPress,
   onProfilePress,
@@ -156,7 +158,7 @@ export function UserHomeScreen({
         <View style={styles.header}>
           <Pressable onPress={onAddressPress}>
             <Text allowFontScaling={false} style={styles.deliveryLabel}>DELIVER TO</Text>
-            <Text allowFontScaling={false} style={styles.address}>123 Maple St</Text>
+            <Text allowFontScaling={false} style={styles.address}>{deliveryAddress ?? 'Select address'}</Text>
           </Pressable>
           <Pressable onPress={onNotificationsPress} style={styles.bellButton}>
             <Feather name="bell" size={18} color="#191c1e" />

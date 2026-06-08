@@ -12,7 +12,7 @@ const DEFAULT_BASE_URL = Platform.select({
 })
 
 export function getApiBaseUrl() {
-  return process.env.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_BASE_URL ?? 'http:// 10.202.21.33:8081'
+  return process.env.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_BASE_URL ?? 'http://10.202.21.33:8081'
 }
 
 export async function apiRequest<T>(
@@ -32,6 +32,9 @@ export async function apiRequest<T>(
     body = JSON.stringify(options.json)
   }
 
+  const controller = new AbortController()
+  const id = setTimeout(() => controller.abort(), 5000)
+
   try {
     const response = await fetch(url, {
       ...options,
@@ -40,7 +43,9 @@ export async function apiRequest<T>(
         ...headers,
         ...(options.headers ?? {}),
       },
+      signal: controller.signal,
     })
+    clearTimeout(id)
 
     const contentType = response.headers.get('content-type') ?? ''
     const isJson = contentType.includes('application/json')

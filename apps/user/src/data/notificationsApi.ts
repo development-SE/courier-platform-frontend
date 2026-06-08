@@ -1,8 +1,31 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { NativeModules, Platform } from 'react-native'
 import * as Application from 'expo-application'
 import * as Device from 'expo-device'
 import * as Localization from 'expo-localization'
 import { apiRequest } from './apiClient'
+
+const DEVICE_ID_KEY = 'swiftdeliver.user.device-id.v1'
+
+async function saveDeviceId(deviceId: string) {
+  try {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId)
+  } catch {}
+}
+
+export async function loadSavedDeviceId(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(DEVICE_ID_KEY)
+  } catch {
+    return null
+  }
+}
+
+export async function clearSavedDeviceId() {
+  try {
+    await AsyncStorage.removeItem(DEVICE_ID_KEY)
+  } catch {}
+}
 
 type ApiResponse<T> = {
   success: boolean
@@ -140,12 +163,37 @@ export async function registerDeviceToken(accessToken: string) {
   })
 
   if (response.ok) {
+    await saveDeviceId(payload.deviceId)
     console.log('[Notifications] Device token response:', JSON.stringify(response.data, null, 2))
   } else {
     console.log('[Notifications] Device token registration failed:', response.error)
   }
 
   return response
+}
+
+export async function unregisterDevice(accessToken: string) {
+  const deviceId = await loadSavedDeviceId()
+  if (!deviceId) {
+    return
+  }
+  await apiRequest<ApiResponse<null>>(`/api/v1/notifications/devices/${deviceId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  await clearSavedDeviceId()
+}
+
+export async function setDeviceEnabled(accessToken: string, enabled: boolean) {
+  const deviceId = await loadSavedDeviceId()
+  if (!deviceId) {
+    return
+  }
+  return apiRequest<ApiResponse<null>>(`/api/v1/notifications/devices/${deviceId}/enabled`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    json: { enabled },
+  })
 }
 
 export async function setupPushNotificationListeners(

@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
-import { loginUser, refreshUserSession, registerUser } from './src/data/authApi'
+import { loginUser, refreshUserSession, registerUser, logout } from './src/data/authApi'
 import { getUserProfile } from './src/data/profileApi'
 import { createMockFoodOrder, type MockFoodCheckoutItem } from './src/data/mockFoodOrders'
 import {
@@ -26,7 +26,7 @@ import {
   type PushInboxNotification,
 } from './src/data/notificationsInbox'
 import { createFoodOrder, type UserOrder } from './src/data/ordersApi'
-import { autoAssignOrder } from './src/data/logisticsApi'
+import { listAddresses, type AddressResponse } from './src/data/addressesApi'
 import {
   clearStoredUserSession,
   loadStoredUserSession,
@@ -74,6 +74,7 @@ export default function App() {
   const [notificationsReloadKey, setNotificationsReloadKey] = useState(0)
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0)
   const [foregroundNotification, setForegroundNotification] = useState<PushInboxNotification | null>(null)
+  const [primaryAddress, setPrimaryAddress] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(false)
   const [isSessionBootstrapping, setIsSessionBootstrapping] = useState(true)
   const [session, setSession] = useState<AuthSession | null>(null)
@@ -190,6 +191,16 @@ export default function App() {
     return () => {
       isActive = false
     }
+  }, [])
+
+  const loadPrimaryAddress = useCallback(async (accessToken: string) => {
+    const res = await listAddresses(accessToken, 1, 20)
+    if (!res.ok) return
+    const addresses: AddressResponse[] = res.data?.content ?? []
+    const primary = addresses.find(a => a.defaultAddress) ?? addresses[0]
+    if (!primary) return
+    const street = [primary.street, primary.house].filter(Boolean).join(', ')
+    setPrimaryAddress(street || primary.city)
   }, [])
 
   const clearMockFoodOrderTimers = useCallback(() => {
@@ -376,14 +387,12 @@ export default function App() {
         deliveryLon: 71.4450,
       })
       if (!createRes.ok) {
-        throw new Error('Failed to create food order')
+        throw new Error(createRes.error.message)
       }
       if (!createRes.data.success || !createRes.data.data?.orderId) {
         throw new Error(createRes.data.error?.message ?? 'Failed to create food order')
       }
       const orderId = createRes.data.data.orderId
-
-      await autoAssignOrder(session.accessToken, orderId)
 
       const newOrder: UserOrder = {
         orderId,
@@ -444,11 +453,32 @@ export default function App() {
     [mockFoodOrders],
   )
 
-  const handleParcelCreated = () => {
-    setOverlayScreen(null)
-    setMainTab('orders')
+  const handleParcelCreated = (orderId?: string) => {
+    if (orderId) {
+      const nextOrder: UserOrder = {
+        orderId,
+        status: 'NEW',
+        serviceType: 'STANDARD',
+        totalAmount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      setSelectedOrder(nextOrder)
+      setOverlayScreen('order-tracking')
+    } else {
+      setOverlayScreen(null)
+      setMainTab('orders')
+    }
     setOrdersReloadKey(currentKey => currentKey + 1)
   }
+
+  useEffect(() => {
+    if (!session?.accessToken) {
+      setPrimaryAddress(undefined)
+      return
+    }
+    void loadPrimaryAddress(session.accessToken)
+  }, [session?.accessToken, loadPrimaryAddress])
 
   useEffect(() => {
     if (!session?.accessToken) {
@@ -541,7 +571,15 @@ export default function App() {
     }
   }, [openNotificationTarget, refreshNotificationsMeta, session?.accessToken, showForegroundNotification])
 
-  const clearSession = () => {
+  const clearSession = async () => {
+    const token = session?.accessToken
+    if (token) {
+      try {
+        await logout(token)
+      } catch (err) {
+        console.warn('Backend logout failed:', err)
+      }
+    }
     clearMockFoodOrderTimers()
     void clearStoredUserSession()
     void clearStoredPushNotifications()
@@ -593,6 +631,7 @@ export default function App() {
                 onAddressPress={() => setOverlayScreen('address')}
                 onNotificationsPress={() => setOverlayScreen('notifications')}
                 unreadNotificationsCount={unreadNotificationsCount}
+                deliveryAddress={primaryAddress}
                 onOrdersPress={() => setMainTab('orders')}
                 onCartPress={() => setMainTab('cart')}
                 onProfilePress={() => setMainTab('profile')}
@@ -748,7 +787,10 @@ export default function App() {
               <UserAddressScreen
                 accessToken={session.accessToken}
                 onBackPress={() => setOverlayScreen(null)}
-                onConfirmPress={() => setOverlayScreen(null)}
+                onConfirmPress={() => {
+                  void loadPrimaryAddress(session.accessToken)
+                  setOverlayScreen(null)
+                }}
               />
             ) : overlayScreen === 'restaurant' ? (
               <RestaurantDetailScreen

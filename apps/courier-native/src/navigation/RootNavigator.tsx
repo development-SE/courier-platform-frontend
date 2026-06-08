@@ -9,6 +9,7 @@ import { appTheme } from '../theme/appTheme'
 import { useAuthStore } from '../store/authStore'
 import { SignInScreen } from '../screens/auth/SignInScreen'
 import { SignUpScreen } from '../screens/auth/SignUpScreen'
+import { CreateCourierProfileScreen } from '../screens/auth/CreateCourierProfileScreen'
 import { DashboardScreen } from '../screens/dashboard/DashboardScreen'
 import { OrdersScreen } from '../screens/orders/OrdersScreen'
 import { OrderDetailScreen } from '../screens/orders/OrderDetailScreen'
@@ -133,6 +134,7 @@ export function RootNavigator() {
           <>
             <Stack.Screen name={SCREEN_IDS.SIGN_IN} component={SignInScreen} />
             <Stack.Screen name={SCREEN_IDS.SIGN_UP} component={SignUpScreen} />
+            <Stack.Screen name={SCREEN_IDS.CREATE_COURIER_PROFILE} component={CreateCourierProfileScreen} />
           </>
         )}
       </Stack.Navigator>

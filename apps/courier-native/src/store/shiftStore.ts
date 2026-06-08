@@ -173,7 +173,7 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
   async acceptOrder(assignmentId, orderId) {
     const accessToken = useAuthStore.getState().accessToken
     if (accessToken) {
-      const res = await apiUpdateAssignmentStatus(accessToken, assignmentId, 'ACCEPTED')
+      const res = await acceptAssignment(accessToken, assignmentId)
       if (!res.ok) {
         console.log('Failed to accept order on backend:', res.error)
         return false
@@ -197,7 +197,7 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
   async rejectOrder(assignmentId) {
     const accessToken = useAuthStore.getState().accessToken
     if (accessToken) {
-      const res = await apiUpdateAssignmentStatus(accessToken, assignmentId, 'REJECTED', undefined, 'Courier skipped')
+      const res = await rejectAssignment(accessToken, assignmentId, 'Courier skipped')
       if (!res.ok) {
         console.log('Failed to reject order on backend:', res.error)
         return false

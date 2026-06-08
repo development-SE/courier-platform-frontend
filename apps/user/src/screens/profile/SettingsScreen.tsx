@@ -24,6 +24,7 @@ import { PaymentMethodsScreen } from './PaymentMethodsScreen'
 import { PrivacyPolicyScreen } from './PrivacyPolicyScreen'
 import { TermsConditionsScreen } from './TermsConditionsScreen'
 import { LanguageScreen, type LanguageCode } from './LanguageScreen'
+import { setDeviceEnabled } from '../../data/notificationsApi'
 
 type SettingsScreenProps = {
   onBackPress: () => void
@@ -415,8 +416,18 @@ export function SettingsScreen({
             safeBottom={safeBottom}
             settings={notificationSettings}
             onBackPress={closeNotifications}
-            onReset={() => setNotificationSettings(defaultNotificationSettings)}
-            onUpdate={setNotificationSettings}
+            onReset={() => {
+              if (accessToken && notificationSettings.masterEnabled !== defaultNotificationSettings.masterEnabled) {
+                setDeviceEnabled(accessToken, defaultNotificationSettings.masterEnabled).catch(() => {})
+              }
+              setNotificationSettings(defaultNotificationSettings)
+            }}
+            onUpdate={(next) => {
+              if (accessToken && next.masterEnabled !== notificationSettings.masterEnabled) {
+                setDeviceEnabled(accessToken, next.masterEnabled).catch(() => {})
+              }
+              setNotificationSettings(next)
+            }}
           />
         </Animated.View>
       )}

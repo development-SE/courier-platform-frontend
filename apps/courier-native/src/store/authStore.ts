@@ -10,9 +10,10 @@ import {
   persistNotificationDeviceState,
   clearNotificationDeviceState,
 } from '../platform/authStorage'
-import { loginWithBackend, refreshSessionWithBackend, registerWithBackend } from '../data/authApi'
+import { loginWithBackend, refreshSessionWithBackend, registerWithBackend, logout } from '../data/authApi'
+import { toggleOnlineStatus } from '../data/logisticsApi'
 import { getAuthProfile, type AuthProfile } from '../data/profileApi'
-import { getMyCourierProfile, type CourierProfile } from '../data/courierApi'
+import { getMyCourierProfile, updateCourierProfile, type CourierProfile, type UpdateCourierProfileRequest } from '../data/courierApi'
 import {
   registerNotificationDevice,
   setNotificationDeviceEnabled,
@@ -74,7 +75,7 @@ type AuthState = {
   courierProfile?: CourierProfile
   notificationDevice?: NotificationDeviceState
   hydrate: () => Promise<void>
-  signIn: (login: string, password: string) => Promise<{ ok: true } | { ok: false; message: string }>
+  signIn: (login: string, password: string) => Promise<{ ok: true } | { ok: false; message: string; reason?: string }>
   signUp: (params: {
     email: string
     password: string
@@ -83,6 +84,8 @@ type AuthState = {
     phone?: string
   }) => Promise<{ ok: true } | { ok: false; message: string }>
   signOut: () => Promise<void>
+  patchCourierProfile: (data: UpdateCourierProfileRequest) => Promise<{ ok: true } | { ok: false; message: string }>
+  reloadCourierProfile: () => Promise<{ ok: true } | { ok: false; message: string }>
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -200,6 +203,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       let authProfile: AuthProfile | null = null
       let isProfileUnauthorized = false
       try {
+        console.log('[AuthStore] Fetching auth profile for access token:', accessToken.slice(0, 15) + '...');
         const profileResponse = await getAuthProfile(accessToken)
         console.log('[AuthStore] Auth profile response ok:', profileResponse.ok);
         if (profileResponse.ok && profileResponse.data.success && profileResponse.data.data) {
@@ -215,6 +219,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       let isCourierUnauthorized = false
       let isCourierNotFound = false
       try {
+        console.log('[AuthStore] Fetching courier profile...');
         const courierResponse = await getMyCourierProfile(accessToken)
         console.log('[AuthStore] Courier profile response ok:', courierResponse.ok);
         if (courierResponse.ok) {
@@ -222,9 +227,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             courierProfile = courierResponse.data.data
           } else {
             isCourierNotFound = true
+            console.warn('[AuthStore] Courier profile not found. data:', JSON.stringify(courierResponse.data))
           }
-        } else if (!courierResponse.ok && courierResponse.error?.status === 401) {
-          isCourierUnauthorized = true
+        } else if (!courierResponse.ok) {
+          console.warn('[AuthStore] Courier profile error status:', courierResponse.error?.status, 'message:', courierResponse.error?.message)
+          if (courierResponse.error?.status === 401) {
+            isCourierUnauthorized = true
+          }
         }
       } catch (courierErr) {
         console.error('[AuthStore] Error fetching courier profile in hydrate:', courierErr)
@@ -339,18 +348,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             courierProfile = courierResponse.data.data
           } else {
             console.warn('[AuthStore] Courier profile explicitly not found/invalid in database.');
-            // Wiping persisted auth info to avoid half-logged-in state
             await clearAuthorizedState()
             await clearAuthTokens()
             await clearNotificationDeviceState()
             return {
               ok: false,
-              message: 'Courier profile not found. Please verify that a courier profile has been created for your account.',
+              message: 'Courier profile not found. Please create your profile first.',
+              reason: 'NO_COURIER_PROFILE',
             }
           }
         } else {
+          if (courierResponse.error?.status === 404) {
+            console.warn('[AuthStore] Courier profile not found (404). Redirecting to profile creation.');
+            await clearAuthorizedState()
+            await clearAuthTokens()
+            await clearNotificationDeviceState()
+            return {
+              ok: false,
+              message: 'Courier profile not found. Please create your profile first.',
+              reason: 'NO_COURIER_PROFILE',
+            }
+          }
           console.warn('[AuthStore] Failed to fetch courier profile due to server error:', courierResponse.error?.message);
-          // Do not completely block login on server error/network error if authentication succeeded
         }
       } catch (err) {
         console.error('[AuthStore] Error fetching courier profile in signIn:', err)
@@ -413,6 +432,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  async patchCourierProfile(data) {
+    const { accessToken, courierProfile } = get()
+    if (!accessToken || !courierProfile?.id) {
+      return { ok: false, message: 'Not authenticated' }
+    }
+    try {
+      const res = await updateCourierProfile(accessToken, courierProfile.id, data)
+      if (!res.ok) {
+        return { ok: false, message: res.error?.message || 'Update failed' }
+      }
+      if (!res.data?.success || !res.data.data) {
+        return { ok: false, message: res.data?.message || 'Update failed' }
+      }
+      set({ courierProfile: res.data.data })
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, message: err?.message || 'Unexpected error' }
+    }
+  },
+
+  async reloadCourierProfile() {
+    const { accessToken } = get()
+    if (!accessToken) return { ok: false, message: 'Not authenticated' }
+    try {
+      const res = await getMyCourierProfile(accessToken)
+      if (!res.ok) return { ok: false, message: res.error?.message || 'Reload failed' }
+      if (!res.data?.success || !res.data.data) return { ok: false, message: 'Profile not found' }
+      set({ courierProfile: res.data.data })
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, message: err?.message || 'Unexpected error' }
+    }
+  },
+
   async signOut() {
     console.log('[AuthStore] Starting signOut...');
     const { accessToken, notificationDevice } = get()
@@ -422,6 +475,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         console.log('[AuthStore] Notification device unregistered.');
       } catch (err) {
         console.error('[AuthStore] Failed to unregister notification device during signOut:', err)
+      }
+    }
+
+    if (accessToken) {
+      try {
+        await toggleOnlineStatus(accessToken, false)
+        console.log('[AuthStore] Went offline before signing out.');
+      } catch (err) {
+        console.error('[AuthStore] Failed to set offline status during signOut:', err)
+      }
+
+      try {
+        await logout(accessToken)
+        console.log('[AuthStore] Server-side logout successful.');
+      } catch (err) {
+        console.error('[AuthStore] Server-side logout request failed:', err)
       }
     }
 
@@ -455,15 +524,6 @@ async function fetchAuthProfile(accessToken: string): Promise<AuthProfile | null
   }
 
   return profileResponse.data.data
-}
-
-async function fetchCourierProfile(accessToken: string): Promise<CourierProfile | null> {
-  const courierResponse = await getMyCourierProfile(accessToken)
-  if (!courierResponse.ok || !courierResponse.data.success || !courierResponse.data.data) {
-    return null
-  }
-
-  return courierResponse.data.data
 }
 
 async function syncNotificationDevice(
@@ -503,8 +563,21 @@ async function syncNotificationDevice(
 
     const registerResponse = await registerNotificationDevice(accessToken, payload)
     console.log('[AuthStore] Register device response ok:', registerResponse.ok);
-    
-    if (!registerResponse.ok || !registerResponse.data.success) {
+
+    if (!registerResponse.ok) {
+      console.warn('[AuthStore] Device registration failed. status:', registerResponse.error?.status, 'message:', registerResponse.error?.message)
+      // Persist deviceId even on failure so the same ID is reused on next restart
+      const partialState: NotificationDeviceState = {
+        deviceId: payload.deviceId,
+        pushToken: payload.pushToken,
+        provider: payload.provider,
+        enabled: false,
+      }
+      await persistNotificationDeviceState(partialState)
+      return partialState
+    }
+
+    if (!registerResponse.data.success) {
       return currentDevice
         ? {
             deviceId: currentDevice.deviceId ?? deviceId,

@@ -8,6 +8,7 @@ export default function SignInPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState({ login: '', password: '' })
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const onChange = e => {
     const { name, value } = e.target
@@ -15,18 +16,21 @@ export default function SignInPage() {
     if (error) setError('')
   }
 
-  const onSubmit = e => {
+  const onSubmit = async e => {
     e.preventDefault()
     if (!form.login.trim() || !form.password.trim()) {
       setError('Enter login and password')
       return
     }
-    const isSuccess = signInWithCredentials(form.login, form.password)
-    if (!isSuccess) {
-      setError('Wrong login or password')
-      return
+    setLoading(true)
+    try {
+      await signInWithCredentials(form.login.trim(), form.password)
+      navigate(ROUTES.DASHBOARD, { replace: true })
+    } catch (err) {
+      setError(err.message || 'Wrong login or password')
+    } finally {
+      setLoading(false)
     }
-    navigate(ROUTES.DASHBOARD, { replace: true })
   }
 
   return (
@@ -75,7 +79,9 @@ export default function SignInPage() {
 
             <div className="auth-row">
               <button type="button" className="auth-forgot">Forgot password</button>
-              <button type="submit" className="auth-btn-login">Log in</button>
+              <button type="submit" className="auth-btn-login" disabled={loading}>
+                {loading ? '...' : 'Log in'}
+              </button>
             </div>
 
             {error && <p className="auth-error">{error}</p>}

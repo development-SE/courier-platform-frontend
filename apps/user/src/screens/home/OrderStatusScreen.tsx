@@ -27,7 +27,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { calculateRoute, decodeRoutePolyline, RoutePoint } from '../../data/routesApi'
 import { getUserOrder, mapOrderStatusToTrackingState, type TrackingState } from '../../data/ordersApi'
-import { getOrderAssignment, getCourierLocation, autoAssignOrder } from '../../data/logisticsApi'
+import { getOrderAssignment, getCourierLocation } from '../../data/logisticsApi'
 
 type OrderStatusScreenProps = {
   accessToken?: string
@@ -211,11 +211,9 @@ export function OrderStatusScreen({
   const { height } = useWindowDimensions()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [hasLocationPermission, setHasLocationPermission] = useState(false)
-  const [routeCoordinates, setRouteCoordinates] = useState<LatLng[]>([
-    courierStartLocation,
-    restaurantLocation,
-    customerLocation,
-  ])
+  const [routeCoordinates, setRouteCoordinates] = useState<LatLng[]>(() =>
+    accessToken && orderId ? [] : [courierStartLocation, restaurantLocation, customerLocation]
+  )
   const [distanceMeters, setDistanceMeters] = useState(4200)
   const [durationSeconds, setDurationSeconds] = useState(50 * 60)
   const [detailedStatus, setDetailedStatus] = useState<DetailedStatus>('Order received')
@@ -223,6 +221,8 @@ export function OrderStatusScreen({
   const [courierId, setCourierId] = useState<string | null>(null)
   const [realCourierLocation, setRealCourierLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [courierOnline, setCourierOnline] = useState<boolean>(false)
+  const [clientGpsCoords, setClientGpsCoords] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [hasRealDeliveryCoords, setHasRealDeliveryCoords] = useState(false)
   const [deliveryCode, setDeliveryCode] = useState<string | null>(null)
   const [showPushNotification, setShowPushNotification] = useState<boolean>(false)
   const pushAnim = useRef(new Animated.Value(-160)).current
@@ -266,6 +266,7 @@ export function OrderStatusScreen({
   const completionCheckBounce = useRef(new Animated.Value(0)).current
   const simulationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const statusTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([])
+  const courierLocationInitialized = useRef(false)
 
   const topCoverHeight = insets.top + 78
   const collapsedHeight = 186 + Math.max(insets.bottom, 16)
@@ -303,6 +304,26 @@ export function OrderStatusScreen({
   }, [trackingState, orderStatus])
 
   const animatedCourierCoordinate = courierMarker as unknown as LatLng
+
+  const isRealMode = Boolean(accessToken && orderId)
+  const upperStatus = orderStatus.toUpperCase()
+  const inTransitStatuses = ['IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING']
+  const withCourierStatuses = ['ASSIGNED', 'PICKED_UP', ...inTransitStatuses]
+  const showCourierMarker = !isRealMode
+    ? true
+    : realCourierLocation !== null && withCourierStatuses.includes(upperStatus)
+  // In real mode, show client's actual GPS position as their marker
+  const showClientMarker = isRealMode && clientGpsCoords !== null
+  // Delivery address marker (destination pin) - separate from client GPS
+  const showDeliveryMarker = !isRealMode
+    ? true
+    : hasRealDeliveryCoords && ['IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING', 'DELIVERED'].includes(upperStatus)
+  const showPickupMarker = !isRealMode
+  // Route: courier → client GPS (if available) or courier → delivery address
+  const showRoute = !isRealMode
+    ? true
+    : realCourierLocation !== null && (clientGpsCoords !== null || hasRealDeliveryCoords) && inTransitStatuses.includes(upperStatus)
+
   const completedStepCount = useMemo(() => {
     if (trackingState.isTerminal) {
       return 0
@@ -481,14 +502,14 @@ export function OrderStatusScreen({
       }
 
       mapRef.current.fitToCoordinates(
-        [courierStartLocation, restaurantLocation, customerLocation, ...coordinates],
+        accessToken && orderId ? coordinates : [courierStartLocation, restaurantLocation, customerLocation, ...coordinates],
         {
           edgePadding: routeFitPadding,
           animated: true,
         },
       )
     },
-    [routeFitPadding],
+    [accessToken, orderId, routeFitPadding],
   )
 
   useEffect(() => {
@@ -552,15 +573,30 @@ export function OrderStatusScreen({
 
   useEffect(() => {
     let isMounted = true
+    let locationSub: Location.LocationSubscription | null = null
 
     const setupLocation = async () => {
       try {
         const permission = await Location.requestForegroundPermissionsAsync()
-        if (!isMounted) {
-          return
-        }
+        if (!isMounted) return
 
-        setHasLocationPermission(permission.status === 'granted')
+        const granted = permission.status === 'granted'
+        setHasLocationPermission(granted)
+
+        if (granted && accessToken && orderId) {
+          // Track client's real GPS position continuously in real mode
+          locationSub = await Location.watchPositionAsync(
+            { accuracy: Location.Accuracy.Balanced, distanceInterval: 15, timeInterval: 5000 },
+            loc => {
+              if (isMounted) {
+                setClientGpsCoords({
+                  latitude: loc.coords.latitude,
+                  longitude: loc.coords.longitude,
+                })
+              }
+            },
+          )
+        }
       } catch {
         if (isMounted) {
           setHasLocationPermission(false)
@@ -572,10 +608,14 @@ export function OrderStatusScreen({
 
     return () => {
       isMounted = false
+      locationSub?.remove()
     }
-  }, [])
+  }, [accessToken, orderId])
 
+  // Mock-mode route: restaurant → customer (straight/OSRM curve for demo)
   useEffect(() => {
+    if (accessToken && orderId) return
+
     let isMounted = true
 
     const loadRoute = async () => {
@@ -584,9 +624,7 @@ export function OrderStatusScreen({
         { lat: customerCoords.latitude, lng: customerCoords.longitude },
       )
 
-      if (!isMounted) {
-        return
-      }
+      if (!isMounted) return
 
       const decodedCoordinates = decodeRoutePolyline(response.encodedPolyline)
       const normalizedRoute =
@@ -605,7 +643,48 @@ export function OrderStatusScreen({
     return () => {
       isMounted = false
     }
-  }, [fitRouteToMap, restaurantCoords, customerCoords])
+  }, [accessToken, orderId, fitRouteToMap, restaurantCoords, customerCoords])
+
+  // Real-mode route: courier → client GPS (preferred) or delivery address, recalculates on courier/client move
+  useEffect(() => {
+    if (!accessToken || !orderId) return
+    if (!['IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING'].includes(orderStatus.toUpperCase())) {
+      setRouteCoordinates([])
+      return
+    }
+    if (!realCourierLocation) return
+    // Prefer routing to client's real GPS, fall back to delivery address
+    const destination = clientGpsCoords ?? (hasRealDeliveryCoords ? customerCoords : null)
+    if (!destination) return
+
+    let isMounted = true
+
+    const recalculate = async () => {
+      try {
+        const response = await calculateRoute(
+          { lat: realCourierLocation.latitude, lng: realCourierLocation.longitude },
+          { lat: destination.latitude, lng: destination.longitude },
+        )
+        if (!isMounted) return
+
+        const decoded = decodeRoutePolyline(response.encodedPolyline)
+        const route = decoded.length >= 2 ? decoded : [realCourierLocation, destination]
+
+        setDistanceMeters(response.distanceMeters)
+        setDurationSeconds(response.durationSeconds)
+        setRouteCoordinates(route)
+        fitRouteToMap(route)
+      } catch {
+        // fail silently — keep previous route
+      }
+    }
+
+    void recalculate()
+
+    return () => {
+      isMounted = false
+    }
+  }, [accessToken, orderId, orderStatus, realCourierLocation, clientGpsCoords, hasRealDeliveryCoords, customerCoords, fitRouteToMap])
 
   // 1. Simulation timer effect for mock ordering (without backend credentials)
   useEffect(() => {
@@ -751,6 +830,12 @@ export function OrderStatusScreen({
             if (prev.latitude === lat && prev.longitude === lng) return prev
             return { latitude: lat, longitude: lng }
           })
+        } else if (latestOrder.pickupAddress?.street) {
+          try {
+            const q = [latestOrder.pickupAddress.street, latestOrder.pickupAddress.house, latestOrder.pickupAddress.city, 'Kazakhstan'].filter(Boolean).join(', ')
+            const res = await Location.geocodeAsync(q)
+            if (res[0] && isActive) setRestaurantCoords({ latitude: res[0].latitude, longitude: res[0].longitude })
+          } catch {}
         }
         if (latestOrder.deliveryAddress?.latitude && latestOrder.deliveryAddress?.longitude) {
           const lat = Number(latestOrder.deliveryAddress.latitude)
@@ -759,6 +844,16 @@ export function OrderStatusScreen({
             if (prev.latitude === lat && prev.longitude === lng) return prev
             return { latitude: lat, longitude: lng }
           })
+          if (isActive) setHasRealDeliveryCoords(true)
+        } else if (latestOrder.deliveryAddress?.street) {
+          try {
+            const q = [latestOrder.deliveryAddress.street, latestOrder.deliveryAddress.house, latestOrder.deliveryAddress.city, 'Kazakhstan'].filter(Boolean).join(', ')
+            const res = await Location.geocodeAsync(q)
+            if (res[0] && isActive) {
+              setCustomerCoords({ latitude: res[0].latitude, longitude: res[0].longitude })
+              setHasRealDeliveryCoords(true)
+            }
+          } catch {}
         }
 
         if (latestOrder.deliveryConfirmationCode) {
@@ -788,9 +883,6 @@ export function OrderStatusScreen({
         }
 
         const rawStatus = latestOrder.status || 'NEW'
-        if (rawStatus === 'NEW') {
-          void autoAssignOrder(accessToken, orderId)
-        }
         setOrderStatus(rawStatus)
         const nextTrackingState = mapOrderStatusToTrackingState(rawStatus)
         const nextMilestone = nextTrackingState.currentStep
@@ -849,23 +941,31 @@ export function OrderStatusScreen({
                 const locData = locRes.data.data
                 setRealCourierLocation(prev => {
                   if (prev && prev.latitude === locData.latitude && prev.longitude === locData.longitude) return prev
-                  return {
-                    latitude: locData.latitude,
-                    longitude: locData.longitude,
-                  }
+                  return { latitude: locData.latitude, longitude: locData.longitude }
                 })
                 setCourierOnline(locData.isOnline)
 
-                courierMarker
-                  .timing({
+                if (!courierLocationInitialized.current) {
+                  // First fix — jump directly to avoid animating from mock coords
+                  courierLocationInitialized.current = true
+                  courierMarker.setValue({
                     latitude: locData.latitude,
                     longitude: locData.longitude,
                     latitudeDelta: 0,
                     longitudeDelta: 0,
-                    duration: 1000,
-                    useNativeDriver: false,
-                  } as any)
-                  .start()
+                  })
+                } else {
+                  courierMarker
+                    .timing({
+                      latitude: locData.latitude,
+                      longitude: locData.longitude,
+                      latitudeDelta: 0,
+                      longitudeDelta: 0,
+                      duration: 1000,
+                      useNativeDriver: false,
+                    } as any)
+                    .start()
+                }
               }
             }
           } else {
@@ -1784,29 +1884,49 @@ export function OrderStatusScreen({
         }}
         provider={Platform.OS === 'ios' && hasGoogleMapsKey ? PROVIDER_GOOGLE : undefined}
         showsCompass={false}
-        showsUserLocation={hasLocationPermission}
+        showsUserLocation={false}
         showsMyLocationButton={false}
         toolbarEnabled={false}
       >
-        <MapPolyline coordinates={routeCoordinates} strokeColor="#ffffff" strokeWidth={8} />
-        <MapPolyline coordinates={routeCoordinates} strokeColor="#5f98ff" strokeWidth={4} />
+        {showRoute && routeCoordinates.length > 1 && (
+          <>
+            <MapPolyline coordinates={routeCoordinates} strokeColor="#ffffff" strokeWidth={8} />
+            <MapPolyline coordinates={routeCoordinates} strokeColor="#5f98ff" strokeWidth={4} />
+          </>
+        )}
 
-        <Marker coordinate={restaurantCoords} anchor={{ x: 0.5, y: 0.5 }}>
-          <View style={styles.restaurantMarkerHalo} />
-          <View style={styles.restaurantMarker} />
-        </Marker>
+        {showPickupMarker && (
+          <Marker coordinate={restaurantCoords} anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={styles.restaurantMarkerHalo} />
+            <View style={styles.restaurantMarker} />
+          </Marker>
+        )}
 
-        <Marker coordinate={customerCoords} anchor={{ x: 0.5, y: 0.5 }}>
-          <View style={styles.customerMarkerOuter}>
-            <View style={styles.customerMarkerInner} />
-          </View>
-        </Marker>
+        {/* Delivery address destination pin (separate from client GPS) */}
+        {showDeliveryMarker && (
+          <Marker coordinate={customerCoords} anchor={{ x: 0.5, y: 1.0 }}>
+            <View style={styles.destinationPin}>
+              <View style={styles.destinationPinTip} />
+            </View>
+          </Marker>
+        )}
 
-        <Marker.Animated coordinate={animatedCourierCoordinate} anchor={{ x: 0.5, y: 0.5 }}>
-          <View style={styles.courierMarker}>
-            <View style={styles.courierDot} />
-          </View>
-        </Marker.Animated>
+        {/* Client's real GPS position marker */}
+        {showClientMarker && clientGpsCoords && (
+          <Marker coordinate={clientGpsCoords} anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={styles.clientGpsHalo}>
+              <View style={styles.clientGpsMarker} />
+            </View>
+          </Marker>
+        )}
+
+        {showCourierMarker && (
+          <Marker.Animated coordinate={animatedCourierCoordinate} anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={styles.courierMarker}>
+              <View style={styles.courierDot} />
+            </View>
+          </Marker.Animated>
+        )}
       </MapView>
 
       <View style={[styles.headerBackground, { height: topCoverHeight }]} />
@@ -2224,6 +2344,50 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: '#ffffff',
+  },
+  // Delivery address destination pin (teardrip/pin shape)
+  destinationPin: {
+    width: 24,
+    height: 30,
+    borderRadius: 12,
+    backgroundColor: '#a7391e',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#ffffff',
+    shadowColor: '#a7391e',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  destinationPinTip: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#ffffff',
+  },
+  // Client's real GPS position marker (pulsing blue)
+  clientGpsHalo: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(30, 91, 186, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clientGpsMarker: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#1e5bba',
+    borderWidth: 3,
+    borderColor: '#ffffff',
+    shadowColor: '#1e5bba',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
   },
   courierMarker: {
     width: 22,

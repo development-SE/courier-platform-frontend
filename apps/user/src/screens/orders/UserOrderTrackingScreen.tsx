@@ -4,6 +4,7 @@ import * as Location from 'expo-location'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   PanResponder,
   Platform,
@@ -15,8 +16,8 @@ import {
 } from 'react-native'
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { getUserOrder, type UserOrder, type UserOrderAddress, getDeliveryConfirmationCode, mapOrderStatusToTrackingState, type TrackingState } from '../../data/ordersApi'
-import { getOrderAssignment, getCourierLocation, autoAssignOrder } from '../../data/logisticsApi'
+import { getUserOrder, type UserOrder, type UserOrderAddress, getDeliveryConfirmationCode, mapOrderStatusToTrackingState, type TrackingState, cancelOrder } from '../../data/ordersApi'
+import { getOrderAssignment, getCourierLocation } from '../../data/logisticsApi'
 
 type UserOrderTrackingScreenProps = {
   accessToken?: string
@@ -182,7 +183,7 @@ export function UserOrderTrackingScreen({
   const maxTranslateRef = useRef(0)
   const isSheetCollapsedRef = useRef(false)
   const [order, setOrder] = useState<UserOrder>(initialOrder)
-  const [isLoading, setIsLoading] = useState(initialOrder.serviceType !== 'FOOD')
+  const [isLoading, setIsLoading] = useState(true)
   const [isSheetCollapsed, setIsSheetCollapsed] = useState(false)
   const [cardHeight, setCardHeight] = useState(0)
   const [resolvedCoords, setResolvedCoords] = useState<{
@@ -197,6 +198,44 @@ export function UserOrderTrackingScreen({
   const [courierId, setCourierId] = useState<string | null>(null)
   const [realCourierLocation, setRealCourierLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [courierOnline, setCourierOnline] = useState<boolean>(false)
+  const [clientGpsCoords, setClientGpsCoords] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [canceling, setCanceling] = useState(false)
+
+  const handleCancelOrder = () => {
+    if (!accessToken) return
+    Alert.alert(
+      'Cancel Order',
+      'Are you sure you want to cancel this order?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            setCanceling(true)
+            try {
+              const res = await cancelOrder(accessToken, order.orderId)
+              if (res.ok && res.data?.success) {
+                Alert.alert('Success', 'Order cancelled successfully.')
+                setOrder(prev => ({
+                  ...prev,
+                  status: 'CANCELLED',
+                }))
+              } else {
+                const errorMsg = res.ok ? res.data?.error?.message : res.error?.message
+                Alert.alert('Error', errorMsg || 'Unable to cancel order.')
+              }
+            } catch (err) {
+              console.warn('Cancel order failed:', err)
+              Alert.alert('Error', 'An unexpected error occurred.')
+            } finally {
+              setCanceling(false)
+            }
+          },
+        },
+      ]
+    )
+  }
 
   useEffect(() => {
     setOrder(prev => {
@@ -210,7 +249,7 @@ export function UserOrderTrackingScreen({
   }, [initialOrder])
 
   useEffect(() => {
-    if (!accessToken || initialOrder.serviceType === 'FOOD') {
+    if (!accessToken) {
       setIsLoading(false)
       return
     }
@@ -257,9 +296,6 @@ export function UserOrderTrackingScreen({
             deliveryConfirmationCode: code || latestOrder.deliveryConfirmationCode || prev.deliveryConfirmationCode
           }))
           
-          if (latestOrder.status === 'NEW') {
-            void autoAssignOrder(accessToken, initialOrder.orderId)
-          }
         }
 
         // Check if order status is terminal
@@ -316,6 +352,34 @@ export function UserOrderTrackingScreen({
       clearTimeout(pollTimer)
     }
   }, [accessToken, initialOrder.orderId, initialOrder.serviceType, onUnauthorized])
+
+  // Track client's real GPS position independently of delivery address
+  useEffect(() => {
+    if (!accessToken) return
+    let isMounted = true
+    let locationSub: Location.LocationSubscription | null = null
+
+    const startTracking = async () => {
+      try {
+        const perm = await Location.requestForegroundPermissionsAsync()
+        if (!isMounted || perm.status !== 'granted') return
+        locationSub = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.Balanced, distanceInterval: 15, timeInterval: 5000 },
+          loc => {
+            if (isMounted) {
+              setClientGpsCoords({ latitude: loc.coords.latitude, longitude: loc.coords.longitude })
+            }
+          },
+        )
+      } catch {}
+    }
+
+    void startTracking()
+    return () => {
+      isMounted = false
+      locationSub?.remove()
+    }
+  }, [accessToken])
 
   useEffect(() => {
     let isActive = true
@@ -377,13 +441,24 @@ export function UserOrderTrackingScreen({
   }, [order])
 
   useEffect(() => {
-    if (!resolvedCoords.pickup || !resolvedCoords.delivery) {
+    if (!resolvedCoords.pickup && !resolvedCoords.delivery) {
       return
     }
 
+    const status = order.status.toUpperCase()
+    const courierInTransit = ['IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING'].includes(status)
     const bottomPadding = isSheetCollapsed ? 176 : 360
+
+    const coordsToFit = [
+      courierInTransit && realCourierLocation ? realCourierLocation : resolvedCoords.pickup,
+      resolvedCoords.delivery,
+      clientGpsCoords,
+    ].filter((c): c is { latitude: number; longitude: number } => c !== null && c !== undefined)
+
+    if (coordsToFit.length === 0) return
+
     const timer = setTimeout(() => {
-      mapRef.current?.fitToCoordinates([resolvedCoords.pickup!, resolvedCoords.delivery!], {
+      mapRef.current?.fitToCoordinates(coordsToFit, {
         edgePadding: {
           top: headerHeight + 20,
           right: 56,
@@ -395,13 +470,20 @@ export function UserOrderTrackingScreen({
     }, 320)
 
     return () => clearTimeout(timer)
-  }, [headerHeight, isSheetCollapsed, resolvedCoords])
+  }, [headerHeight, isSheetCollapsed, resolvedCoords, realCourierLocation, clientGpsCoords, order.status])
 
   useEffect(() => {
     let isActive = true
+    const status = order.status.toUpperCase()
+    const courierInTransit = ['IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING'].includes(status)
 
     const buildRoute = async () => {
-      const nextRoute = await fetchRouteCoordinates(resolvedCoords.pickup, resolvedCoords.delivery)
+      // When courier is in transit, route from courier GPS → delivery address (dynamic)
+      // Otherwise: static pickup → delivery route
+      const origin = courierInTransit && realCourierLocation ? realCourierLocation : resolvedCoords.pickup
+      const destination = resolvedCoords.delivery
+
+      const nextRoute = await fetchRouteCoordinates(origin, destination)
       if (isActive) {
         setRouteCoords(nextRoute)
       }
@@ -412,7 +494,7 @@ export function UserOrderTrackingScreen({
     return () => {
       isActive = false
     }
-  }, [resolvedCoords])
+  }, [resolvedCoords, order.status, realCourierLocation])
 
   useEffect(() => {
     isSheetCollapsedRef.current = isSheetCollapsed
@@ -543,6 +625,16 @@ export function UserOrderTrackingScreen({
     return realCourierLocation
   }, [order.status, realCourierLocation])
 
+  const showDeliveryMarker = useMemo(() =>
+    ['PICKED_UP', 'IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING', 'DELIVERED'].includes(order.status.toUpperCase()),
+    [order.status],
+  )
+
+  const showRoute = useMemo(() =>
+    ['IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING'].includes(order.status.toUpperCase()),
+    [order.status],
+  )
+
   const itemNames = (order.items ?? [])
     .map(item => item.name?.trim())
     .filter(Boolean)
@@ -570,6 +662,7 @@ export function UserOrderTrackingScreen({
         ref={mapRef}
         style={styles.map}
         provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+        showsUserLocation={false}
         initialRegion={{
           latitude: ASTANA_CENTER.latitude,
           longitude: ASTANA_CENTER.longitude,
@@ -577,30 +670,33 @@ export function UserOrderTrackingScreen({
           longitudeDelta: 0.04,
         }}
       >
-        {resolvedCoords.pickup ? (
-          <Marker coordinate={resolvedCoords.pickup} title="Origin">
-            <View style={styles.markerPickup}>
-              <Text style={styles.markerText}>A</Text>
-            </View>
-          </Marker>
-        ) : null}
-
-        {resolvedCoords.delivery ? (
-          <Marker coordinate={resolvedCoords.delivery} title="Destination">
+        {/* Delivery address destination pin */}
+        {showDeliveryMarker && resolvedCoords.delivery ? (
+          <Marker coordinate={resolvedCoords.delivery} title="Delivery address">
             <View style={styles.markerDelivery}>
               <Text style={styles.markerText}>B</Text>
             </View>
           </Marker>
         ) : null}
 
-        {routeLineCoords.length > 1 ? (
+        {showRoute && routeLineCoords.length > 1 ? (
           <Polyline coordinates={routeLineCoords} strokeColor="#A7391E" strokeWidth={4} />
         ) : null}
 
+        {/* Courier GPS marker */}
         {courierLocation ? (
           <Marker coordinate={courierLocation} title="Courier">
             <View style={styles.courierMarker}>
               <MaterialCommunityIcons name="bike-fast" size={20} color="#A7391E" />
+            </View>
+          </Marker>
+        ) : null}
+
+        {/* Client's real GPS position (independent of delivery address) */}
+        {clientGpsCoords ? (
+          <Marker coordinate={clientGpsCoords} title="You">
+            <View style={styles.clientGpsHalo}>
+              <View style={styles.clientGpsMarker} />
             </View>
           </Marker>
         ) : null}
@@ -808,6 +904,23 @@ export function UserOrderTrackingScreen({
                 </View>
               </>
             ) : null}
+            {order.status && ['NEW', 'PENDING', 'CONFIRMED', 'ASSIGNMENT_PENDING', 'ACCEPTED', 'PREPARING', 'READY'].includes(order.status.toUpperCase()) ? (
+              <>
+                <View style={styles.divider} />
+                <TouchableOpacity
+                  style={[styles.cancelButton, canceling && styles.disabledButton]}
+                  onPress={handleCancelOrder}
+                  disabled={canceling}
+                  activeOpacity={0.8}
+                >
+                  {canceling ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.cancelButtonText}>Cancel Order</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : null}
           </ScrollView>
         </Animated.View>
       </View>
@@ -884,6 +997,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 6,
+  },
+  clientGpsHalo: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(30, 91, 186, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clientGpsMarker: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#1e5bba',
+    borderWidth: 3,
+    borderColor: '#ffffff',
+    shadowColor: '#1e5bba',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
   },
   cardWrapper: {
     position: 'absolute',
@@ -1232,5 +1366,22 @@ const styles = StyleSheet.create({
   },
   progressLabelActive: {
     fontWeight: '900',
+  },
+  cancelButton: {
+    height: 52,
+    backgroundColor: '#EF4444',
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  cancelButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
 })

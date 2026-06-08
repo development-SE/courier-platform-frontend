@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import {
+  Alert,
   Animated,
   Easing,
   Image,
@@ -16,6 +17,8 @@ import { EditProfileScreen } from './EditProfileScreen'
 import { PaymentMethodsScreen } from './PaymentMethodsScreen'
 import { SettingsScreen } from './SettingsScreen'
 import { styles } from './styles'
+import { logoutAll } from '../../data/authApi'
+import { unregisterDevice } from '../../data/notificationsApi'
 
 type UserProfileScreenProps = {
   accessToken: string
@@ -50,6 +53,38 @@ export function UserProfileScreen({
   const insets = useSafeAreaInsets()
   const { height, width } = useWindowDimensions()
   const editProgress = useRef(new Animated.Value(0)).current
+  const [loggingOutAll, setLoggingOutAll] = useState(false)
+
+  const handleSignOut = async () => {
+    unregisterDevice(accessToken).catch(() => {})
+    onSignOut?.()
+  }
+
+  const handleLogoutAll = () => {
+    Alert.alert(
+      'Log out from all devices?',
+      'This will terminate all active sessions on all devices.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log out',
+          style: 'destructive',
+          onPress: async () => {
+            setLoggingOutAll(true)
+            try {
+              await unregisterDevice(accessToken).catch(() => {})
+              await logoutAll(accessToken)
+            } catch (err) {
+              console.warn('Logout all failed:', err)
+            } finally {
+              setLoggingOutAll(false)
+              onSignOut?.()
+            }
+          },
+        },
+      ]
+    )
+  }
   const paymentProgress = useRef(new Animated.Value(0)).current
   const settingsProgress = useRef(new Animated.Value(0)).current
   const [isEditOpen, setIsEditOpen] = useState(false)
@@ -215,7 +250,7 @@ export function UserProfileScreen({
           </View>
 
           <View style={styles.menuList}>
-            {menuItems.map((item, index) => (
+            {menuItems.map((item) => (
               <Pressable
                 key={item}
                 style={styles.menuItem}
@@ -227,8 +262,16 @@ export function UserProfileScreen({
             ))}
           </View>
 
-          <Pressable style={styles.logoutButton} onPress={onSignOut}>
+          <Pressable style={styles.logoutButton} onPress={handleSignOut}>
             <Text allowFontScaling={false} style={styles.logoutText}>Log out</Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.logoutButton, { marginTop: 12, backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#ff7a59' }]}
+            onPress={handleLogoutAll}
+            disabled={loggingOutAll}
+          >
+            <Text allowFontScaling={false} style={[styles.logoutText, { color: '#ff7a59' }]}>Log out from all devices</Text>
           </Pressable>
         </View>
       </ScrollView>

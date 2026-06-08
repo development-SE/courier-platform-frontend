@@ -12,18 +12,43 @@ export type RouteResponse = {
   encodedPolyline: string
 }
 
+const OSRM = 'https://router.project-osrm.org/route/v1/driving'
+
+async function fetchOsrmRoute(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+): Promise<RouteResponse | null> {
+  try {
+    const url = `${OSRM}/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?overview=full&geometries=polyline`
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } })
+    if (!res.ok) return null
+    const data = await res.json()
+    if (!data.routes?.length) return null
+    const route = data.routes[0]
+    return {
+      encodedPolyline: route.geometry,
+      distanceMeters: Math.round(route.legs[0].distance),
+      durationSeconds: Math.round(route.legs[0].duration),
+    }
+  } catch {
+    return null
+  }
+}
+
 export async function calculateRoute(
   origin: { lat: number; lng: number },
   destination: { lat: number; lng: number },
 ): Promise<RouteResponse> {
-  const response = await apiRequest<RouteResponse>('/api/routes/calculate', {
+  // Try backend first
+  const backendRes = await apiRequest<RouteResponse>('/api/routes/calculate', {
     method: 'POST',
     json: { origin, destination },
   })
+  if (backendRes.ok) return backendRes.data
 
-  if (response.ok) {
-    return response.data
-  }
+  // Fall back to OSRM (free, no API key)
+  const osrmRes = await fetchOsrmRoute(origin, destination)
+  if (osrmRes) return osrmRes
 
   return buildFallbackRoute(origin, destination)
 }

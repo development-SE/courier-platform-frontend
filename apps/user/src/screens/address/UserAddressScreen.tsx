@@ -1,9 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import {
   ActivityIndicator,
-  ImageBackground,
   Keyboard,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -16,7 +14,7 @@ import { Feather, FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/v
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps'
 import * as Location from 'expo-location'
-import { createAddress, listAddresses, type AddressResponse } from '../../data/addressesApi'
+import { createAddress, listAddresses, updateAddress, type AddressResponse } from '../../data/addressesApi'
 
 type UserAddressScreenProps = {
   accessToken: string
@@ -33,11 +31,6 @@ type SavedAddress = {
   text: string
   icon: 'home' | 'work' | 'other'
 }
-
-const mapPreviewUrl =
-  Platform.OS === 'ios'
-    ? 'https://images.unsplash.com/photo-1569336415962-a4bd9f69c07a?auto=format&fit=crop&w=900&q=80'
-    : 'https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=900&q=80'
 
 function mapToSaved(addr: AddressResponse): SavedAddress {
   const labelLower = (addr.label ?? '').toLowerCase()
@@ -64,6 +57,8 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
   const [mode, setMode] = useState<AddressScreenMode>('list')
   const [selectedAddressId, setSelectedAddressId] = useState('')
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
+  const [rawAddresses, setRawAddresses] = useState<AddressResponse[]>([])
+  const [editingAddress, setEditingAddress] = useState<AddressResponse | null>(null)
   const [loadingAddresses, setLoadingAddresses] = useState(true)
   const [saving, setSaving] = useState(false)
   const [streetAddress, setStreetAddress] = useState('')
@@ -290,8 +285,8 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
       if (!active) return
       setLoadingAddresses(false)
       if (result.ok && result.data.content) {
-        const mapped = result.data.content.map(mapToSaved)
-        setSavedAddresses(mapped)
+        setRawAddresses(result.data.content)
+        setSavedAddresses(result.data.content.map(mapToSaved))
         if (result.data.content.length > 0) {
           const def = result.data.content.find(a => a.defaultAddress) ?? result.data.content[0]
           setSelectedAddressId(def.id)
@@ -319,23 +314,41 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
     }
   }, [accessToken])
 
-  const openMap = async () => {
-    const latitude = 37.7749
-    const longitude = -122.4194
-    const label = encodeURIComponent('Delivery Point')
-    const nativeUrl = Platform.select({
-      ios: `http://maps.apple.com/?ll=${latitude},${longitude}&q=${label}`,
-      android: `geo:${latitude},${longitude}?q=${latitude},${longitude}(${label})`,
-      default: `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`,
-    })
-    const fallbackUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+  const enterAddMode = () => {
+    setEditingAddress(null)
+    setStreetAddress('')
+    setCity('Astana')
+    setEntrance('')
+    setFloor('')
+    setDoor('')
+    setBuildingName('')
+    setCourierNotes('')
+    setSaveAs('apartment')
+    setHasInteracted(false)
+    setSuggestions([])
+    setSearchQuery('')
+    setIsAddingFromMap(true)
+    setIsMapExpanded(true)
+  }
 
-    if (nativeUrl && (await Linking.canOpenURL(nativeUrl))) {
-      await Linking.openURL(nativeUrl)
-      return
-    }
-
-    await Linking.openURL(fallbackUrl)
+  const enterEditMode = (addr: AddressResponse) => {
+    setEditingAddress(addr)
+    setStreetAddress(addr.street)
+    setCity(addr.city)
+    setEntrance(addr.entrance ?? '')
+    setFloor(addr.floor ?? '')
+    setDoor(addr.apartment ?? '')
+    setBuildingName('')
+    setCourierNotes('')
+    const labelLower = (addr.label ?? '').toLowerCase()
+    setSaveAs(labelLower === 'office' ? 'office' : labelLower === 'other' ? 'other' : 'apartment')
+    setRegion(prev => ({
+      ...prev,
+      latitude: addr.latitude,
+      longitude: addr.longitude,
+    }))
+    setHasInteracted(true)
+    setMode('add')
   }
 
   const handleBack = () => {
@@ -350,15 +363,14 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
   const handleSaveAddress = async () => {
     setSaving(true)
     const label = saveAs === 'apartment' ? 'Apartment' : saveAs === 'office' ? 'Office' : 'Other'
-    
-    // Safety slice to meet backend @Size(max = 50) constraints
+
     const isApartment = saveAs === 'apartment'
     const safeHouse = (isApartment ? '1' : buildingName).trim().slice(0, 50)
     const safeEntrance = (isApartment ? entrance : courierNotes).trim().slice(0, 50)
-    
-    const result = await createAddress(accessToken, {
+
+    const payload = {
       label,
-      city: city || 'Almaty',
+      city: city || 'Astana',
       street: streetAddress.trim(),
       house: safeHouse || '1',
       entrance: safeEntrance,
@@ -366,12 +378,27 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
       apartment: isApartment ? door.trim().slice(0, 50) : '',
       latitude: region.latitude,
       longitude: region.longitude,
-    })
+    }
+
+    if (editingAddress) {
+      const result = await updateAddress(accessToken, editingAddress.id, payload)
+      setSaving(false)
+      if (!result.ok) return
+      const updated = result.data
+      setRawAddresses(prev => prev.map(a => (a.id === updated.id ? updated : a)))
+      setSavedAddresses(prev => prev.map(a => (a.id === updated.id ? mapToSaved(updated) : a)))
+      setEditingAddress(null)
+      setMode('list')
+      return
+    }
+
+    const result = await createAddress(accessToken, payload)
     setSaving(false)
     if (!result.ok) return
 
     const reloadResult = await listAddresses(accessToken)
     if (reloadResult.ok && reloadResult.data.content) {
+      setRawAddresses(reloadResult.data.content)
       setSavedAddresses(reloadResult.data.content.map(mapToSaved))
       setSelectedAddressId(result.data.id)
     }
@@ -460,6 +487,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
 
               {!loadingAddresses && savedAddresses.map(address => {
                 const isSelected = selectedAddressId === address.id
+                const raw = rawAddresses.find(r => r.id === address.id)
 
                 return (
                   <Pressable
@@ -486,6 +514,16 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
                       </Text>
                     </View>
 
+                    {raw && (
+                      <Pressable
+                        style={styles.editAddressButton}
+                        onPress={() => enterEditMode(raw)}
+                        hitSlop={8}
+                      >
+                        <Feather name="edit-2" size={14} color="#58423c" />
+                      </Pressable>
+                    )}
+
                     {isSelected ? (
                       <View style={styles.checkCircle}>
                         <Feather name="check" size={14} color="#ffffff" />
@@ -496,13 +534,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
               })}
 
               <Pressable
-                onPress={() => {
-                  setHasInteracted(false)
-                  setSuggestions([])
-                  setSearchQuery('')
-                  setIsAddingFromMap(true)
-                  setIsMapExpanded(true)
-                }}
+                onPress={enterAddMode}
                 style={styles.addAddressCard}
               >
                 <View style={styles.addIcon}>
@@ -531,7 +563,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
             </Pressable>
 
             <Text allowFontScaling={false} style={styles.addHeaderTitle}>
-              Add Address
+              {editingAddress ? 'Edit Address' : 'Add Address'}
             </Text>
 
             <View style={styles.addHeaderSpacer} />
@@ -729,7 +761,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
                 <ActivityIndicator size="small" color="#701500" />
               ) : (
                 <Text allowFontScaling={false} style={styles.saveButtonText}>
-                  Save Address
+                  {editingAddress ? 'Update Address' : 'Save Address'}
                 </Text>
               )}
             </Pressable>
@@ -1020,7 +1052,7 @@ const styles = StyleSheet.create({
   addressBody: {
     flex: 1,
     paddingLeft: 16,
-    paddingRight: 42,
+    paddingRight: 52,
   },
   addressTitle: {
     color: '#191c1e',
@@ -1034,9 +1066,20 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     fontWeight: '400',
   },
+  editAddressButton: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(88, 66, 60, 0.08)',
+  },
   checkCircle: {
     position: 'absolute',
-    right: 20,
+    right: 26,
     top: 58,
     width: 20,
     height: 20,

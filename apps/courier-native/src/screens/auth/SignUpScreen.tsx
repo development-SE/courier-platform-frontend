@@ -77,7 +77,7 @@ export function SignUpScreen({ navigation }: Props) {
       return
     }
 
-    navigation.navigate(SCREEN_IDS.SIGN_IN)
+    navigation.navigate(SCREEN_IDS.SIGN_IN, { verifyEmailNotice: true })
   }
 
   return (

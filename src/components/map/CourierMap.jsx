@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Layers, LocateFixed, Minus, Plus } from 'lucide-react'
-import { getCourierPosition } from '../../services/courierDataService'
 import { MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM, MAP_STYLE_URL } from '../../constants/map.config'
 import './CourierMap.css'
 
-const COURIER_POSITION = getCourierPosition()
+// Almaty fallback, overridden by real GPS when available
+const COURIER_POSITION = MAP_DEFAULT_CENTER
 
 function createCourierMarkerElement() {
   const marker = document.createElement('div')
@@ -73,6 +73,22 @@ export default function CourierMap({ className = '' }) {
   const markerRef = useRef(null)
   const [isReady, setIsReady] = useState(false)
   const [hasError, setHasError] = useState(false)
+  const [courierPos, setCourierPos] = useState(COURIER_POSITION)
+
+  // Get real GPS position
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const lngLat = [pos.coords.longitude, pos.coords.latitude]
+        setCourierPos(lngLat)
+        if (markerRef.current) markerRef.current.setLngLat(lngLat)
+        if (mapRef.current) mapRef.current.flyTo({ center: lngLat, zoom: 14, duration: 800 })
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 8000 },
+    )
+  }, [])
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
@@ -82,7 +98,7 @@ export default function CourierMap({ className = '' }) {
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: MAP_STYLE_URL,
-      center: MAP_DEFAULT_CENTER,
+      center: courierPos,
       zoom: MAP_DEFAULT_ZOOM,
       attributionControl: false,
     })
@@ -101,7 +117,7 @@ export default function CourierMap({ className = '' }) {
         element: createCourierMarkerElement(),
         anchor: 'bottom',
       })
-        .setLngLat(COURIER_POSITION)
+        .setLngLat(courierPos)
         .addTo(map)
 
       mapRef.current = map
@@ -136,12 +152,12 @@ export default function CourierMap({ className = '' }) {
 
   const handleLocate = useCallback(() => {
     mapRef.current?.flyTo({
-      center: COURIER_POSITION,
+      center: courierPos,
       zoom: 14,
       duration: 800,
       essential: true,
     })
-  }, [])
+  }, [courierPos])
 
   const showFallback = hasError || !isReady
 

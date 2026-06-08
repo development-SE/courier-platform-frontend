@@ -77,7 +77,7 @@ export default function DashboardPage() {
         onPrimaryActionIntent={onMapIntent}
       />
 
-      {showIncoming && !hasActiveOrder && (
+      {showIncoming && !hasActiveOrder && incomingOrder && (
         <IncomingOrderModal
           order={incomingOrder}
           onAccept={onAcceptIncoming}

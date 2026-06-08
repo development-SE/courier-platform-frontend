@@ -47,12 +47,3 @@ export async function getCourierLocation(accessToken: string, courierId: string)
   })
 }
 
-export async function autoAssignOrder(accessToken: string, orderId: string) {
-  return apiRequest<ApiResponse<any>>(`/api/v1/logistics/assignments/auto/${orderId}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  })
-}
-
