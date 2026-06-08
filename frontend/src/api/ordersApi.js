@@ -1,16 +1,11 @@
-import axios from 'axios'
+import { api } from '../utils/api'
 import { auth } from '../utils/auth'
 
-const http = axios.create({
-  baseURL: 'http://localhost:8080/api/v1',
-})
+const token = () => auth.getToken()
+
+const unwrap = (response) => response?.data ?? response
 
 const MAX_BACKEND_PAGE_SIZE = 100
-
-const authHeaders = () => {
-  const token = auth.getToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
 
 // Map your backend response to the shape the UI already expects
 const toUiOrder = (order) => ({
@@ -69,14 +64,16 @@ const toPascalStatus = (status) => {
 export const ordersApi = {
   async list({ search = '', dateFrom = '', dateTo = '', page = 1, pageSize = 10 } = {}) {
     const safePageSize = Math.min(Math.max(1, pageSize), MAX_BACKEND_PAGE_SIZE)
-    const params = { page, size: safePageSize, sortBy: 'createdAt', sortDesc: true }
+    const params = new URLSearchParams()
+    params.append('page', page)
+    params.append('size', safePageSize)
+    params.append('sortBy', 'createdAt')
+    params.append('sortDesc', 'true')
 
-    const { data } = await http.get('/orders', {
-      params,
-      headers: authHeaders(),
-    })
+    const response = await api.get(`/orders?${params.toString()}`, token())
+    const data = unwrap(response)
 
-    let items = (data.data?.orders || []).map(toUiOrder)
+    let items = (data?.orders || []).map(toUiOrder)
 
     // client-side search & date filter (until backend supports it)
     if (search) {
@@ -98,7 +95,7 @@ export const ordersApi = {
 
     return {
       items,
-      total: data.data?.totalCount || items.length,
+      total: data?.totalCount || items.length,
     }
   },
 
@@ -133,10 +130,9 @@ export const ordersApi = {
   },
 
   async getById(orderId) {
-    const { data } = await http.get(`/orders/${orderId}`, {
-      headers: authHeaders(),
-    })
-    return toUiOrder(data.data)
+    const response = await api.get(`/orders/${orderId}`, token())
+    const data = unwrap(response)
+    return toUiOrder(data)
   },
 
   async create(dto) {
@@ -172,18 +168,15 @@ export const ordersApi = {
       items: dto.items || [{ itemId: 'ITEM-1', name: 'Package', quantity: 1 }],
     }
 
-    const { data } = await http.post('/orders', body, {
-      headers: authHeaders(),
-    })
-    return { id: data.data?.orderId, ...dto }
+    const response = await api.post('/orders', body, token())
+    const data = unwrap(response)
+    return { id: data?.orderId, ...dto }
   },
 
   async updateStatus(orderId, newStatus) {
-    const { data } = await http.patch(`/orders/${orderId}/status`, {
+    const response = await api.patch(`/orders/${orderId}/status`, {
       newStatus: newStatus.toUpperCase(),
-    }, {
-      headers: authHeaders(),
-    })
-    return data
+    }, token())
+    return unwrap(response)
   },
 }

@@ -364,6 +364,233 @@
   margin-top: 0.5rem;
 }
 
+/* ── Assign panel (inside courier-card) ── */
+.assign-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  width: 100%;
+}
+
+.assign-btns {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-assign-auto {
+  padding: 0.45rem 1rem;
+  border: none;
+  border-radius: 8px;
+  background: #3b82f6;
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-assign-auto:hover:not(:disabled) { background: #2563eb; }
+.btn-assign-auto:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.btn-assign-manual {
+  padding: 0.45rem 1rem;
+  border: none;
+  border-radius: 8px;
+  background: #cd5e3d;
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-assign-manual:hover:not(:disabled) { background: #b84f31; }
+.btn-assign-manual:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.assign-success {
+  font-size: 0.82rem;
+  color: #166534;
+  background: #dcfce7;
+  padding: 0.3rem 0.75rem;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.assign-error {
+  font-size: 0.82rem;
+  color: #991b1b;
+  background: #fee2e2;
+  padding: 0.3rem 0.75rem;
+  border-radius: 6px;
+  text-align: center;
+}
+
+/* ── Manual assign modal ── */
+.od-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.od-modal {
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  width: 90%;
+  max-width: 480px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.od-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #eef2f7;
+  flex-shrink: 0;
+}
+
+.od-modal-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.od-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+.od-modal-body {
+  padding: 1rem 1.25rem;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.od-modal-info {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #374151;
+}
+
+.od-modal-info code {
+  background: #f3f4f6;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  color: #1d4ed8;
+}
+
+.od-search {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  color: #111827;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.od-search:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+}
+
+.od-courier-list {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  max-height: 230px;
+  overflow-y: auto;
+}
+
+.od-courier-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.od-courier-row:last-child { border-bottom: none; }
+.od-courier-row:hover { background: #f9fafb; }
+.od-courier-row.selected {
+  background: #eff6ff;
+  border-left: 3px solid #3b82f6;
+}
+
+.od-courier-name {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #111827;
+}
+
+.od-ctype {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 20px;
+  text-transform: uppercase;
+}
+
+.od-ctype--employee   { background: #dcfce7; color: #166534; }
+.od-ctype--contractor { background: #dbeafe; color: #1d4ed8; }
+
+.od-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.od-form-group label {
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.od-list-msg {
+  padding: 1rem;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.85rem;
+}
+
+.od-error {
+  background: #ffebee;
+  color: #d32f2f;
+  border-left: 4px solid #d32f2f;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0 6px 6px 0;
+  font-size: 0.83rem;
+}
+
+.od-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid #eef2f7;
+  flex-shrink: 0;
+}
+
 @media (max-width: 1100px) {
   .details-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

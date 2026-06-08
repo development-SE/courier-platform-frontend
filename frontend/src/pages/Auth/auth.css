@@ -192,6 +192,41 @@
   font-size: 0.82rem;
 }
 
+.auth-success {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 10px;
+  background: rgba(44, 122, 72, 0.18);
+  border: 1px solid rgba(74, 222, 128, 0.28);
+  color: #dcfce7;
+  font-size: 0.82rem;
+}
+
+.auth-success-token {
+  word-break: break-all;
+  color: #fef3c7;
+}
+
+.auth-success-link {
+  width: fit-content;
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+.auth-secondary-btn {
+  min-height: 38px;
+  width: fit-content;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: transparent;
+  color: #ffffff;
+  padding: 0 0.9rem;
+  cursor: pointer;
+}
+
 .auth-or {
   margin: 0.9rem 0 0.7rem;
   color: #c8ccd5;

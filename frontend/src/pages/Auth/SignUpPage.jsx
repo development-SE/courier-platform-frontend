@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { auth } from '../../utils/auth'
+import { authApi } from '../../api/auth.api'
 import authImageUrl from '../../assets/Auth.png'
 import './auth.css'
 
@@ -13,11 +13,13 @@ export const SignUpPage = () => {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState(null)
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async event => {
     event.preventDefault()
     setError('')
+    setSuccess(null)
 
     if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim() || !confirmPassword.trim()) {
       setError('All required fields must be filled')
@@ -36,8 +38,13 @@ export const SignUpPage = () => {
 
     setLoading(true)
     try {
-      await auth.signUp({ firstName, lastName, email, password, phone })
-      navigate('/sign-in', { replace: true })
+      const result = await authApi.register({ firstName, lastName, email, password, phone, role: 'ADMIN' })
+      const confirmationToken = result?.confirmationToken || ''
+      setSuccess({
+        email: email.trim(),
+        confirmationToken,
+        verifyUrl: confirmationToken ? `http://localhost:8080/api/v1/auth/verify?token=${confirmationToken}` : '',
+      })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -65,7 +72,7 @@ export const SignUpPage = () => {
           </Link>
           <div className="auth-form-panel auth-signup-panel">
             <h1>Sign Up</h1>
-            <p className="auth-signup-subtitle">Create your account and start using SwiftDeliver.</p>
+            <p className="auth-signup-subtitle">Create an admin account for SwiftDeliver.</p>
 
             <form className="auth-form" onSubmit={handleSubmit}>
               <label className="auth-input-label" htmlFor="signup-first-name">First Name</label>
@@ -123,6 +130,28 @@ export const SignUpPage = () => {
               />
 
               {error && <div className="auth-error">{error}</div>}
+              {success && (
+                <div className="auth-success">
+                  <strong>Registration completed.</strong>
+                  <div>Email: {success.email}</div>
+                  <div>Use the verification link below if the email does not arrive.</div>
+                  {success.confirmationToken && (
+                    <div className="auth-success-token">Token: {success.confirmationToken}</div>
+                  )}
+                  {success.verifyUrl && (
+                    <a href={success.verifyUrl} target="_blank" rel="noreferrer" className="auth-success-link">
+                      Open verification link
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    className="auth-secondary-btn"
+                    onClick={() => navigate('/sign-in', { replace: true })}
+                  >
+                    Go to sign in
+                  </button>
+                </div>
+              )}
 
               <button type="submit" disabled={loading}>
                 {loading ? 'Signing up...' : 'Sign up'}

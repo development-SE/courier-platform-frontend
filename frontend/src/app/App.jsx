@@ -9,6 +9,8 @@ import { OrderCreatePage } from '../pages/Orders/OrderCreatePage'
 import { OrderDetailsPage } from '../pages/Orders/OrderDetailsPage'
 import { ClientPage } from '../pages/Clients/ClientPage'
 import { CourierPage } from '../pages/Couriers/CourierPage'
+import { AssignmentsPage } from '../pages/Assignments/AssignmentsPage'
+import { MapPage } from '../pages/Map/MapPage'
 import { CompanySettingsPage } from '../pages/CompanySettings/CompanySettingsPage'
 import { CatalogPage } from '../pages/Catalog/CatalogPage'
 import { SignInPage } from '../pages/Auth/SignInPage'
@@ -116,6 +118,28 @@ function App() {
             <RequireAuth allowedRoles={ADMIN_ROLES}>
               <PartnerLayout currentPage="couriers">
                 <CourierPage />
+              </PartnerLayout>
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/assignments"
+          element={
+            <RequireAuth allowedRoles={ADMIN_ROLES}>
+              <PartnerLayout currentPage="assignments">
+                <AssignmentsPage />
+              </PartnerLayout>
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/map"
+          element={
+            <RequireAuth allowedRoles={ADMIN_ROLES}>
+              <PartnerLayout currentPage="map">
+                <MapPage />
               </PartnerLayout>
             </RequireAuth>
           }

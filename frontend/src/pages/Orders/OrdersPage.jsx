@@ -1,6 +1,9 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ordersApi } from '../../api/ordersApi'
+import { assignmentsApi } from '../../api/assignments.api'
+import { couriersApi } from '../../api/couriers.api'
+import { auth } from '../../utils/auth'
 import { Pagination } from '../../components/common/Pagination'
 import './ordersPage.css'
 
@@ -60,6 +63,21 @@ export const OrdersPage = () => {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [selectedIds, setSelectedIds] = useState([])
+
+  // assign modal
+  const [showAssignModal, setShowAssignModal] = useState(false)
+  const [assignTab, setAssignTab] = useState('auto') // 'auto' | 'manual'
+  const [couriers, setCouriers] = useState([])
+  const [couriersLoading, setCouriersLoading] = useState(false)
+  const [courierSearch, setCourierSearch] = useState('')
+  const [selectedCourierId, setSelectedCourierId] = useState(null)
+  const [manualReason, setManualReason] = useState('')
+  const [assignLoading, setAssignLoading] = useState(false)
+  const [assignMsg, setAssignMsg] = useState('')
+  const [assignErr, setAssignErr] = useState('')
+
+  const session = auth.getSession()
+  const isAdmin = session?.role === 'ADMIN' || session?.role === 'SUPER_ADMIN'
 
   const loadOrders = useCallback(async () => {
     setLoading(true)
@@ -150,6 +168,77 @@ export const OrdersPage = () => {
     URL.revokeObjectURL(url)
   }
 
+  const filteredCouriers = useMemo(() => {
+    if (!courierSearch) return couriers
+    const q = courierSearch.toLowerCase()
+    return couriers.filter(c =>
+      `${c.firstName || ''} ${c.lastName || ''}`.toLowerCase().includes(q) ||
+      (c.email || '').toLowerCase().includes(q)
+    )
+  }, [couriers, courierSearch])
+
+  const openAssignModal = async () => {
+    setShowAssignModal(true)
+    setAssignTab(selectedIds.length === 1 ? 'auto' : 'auto')
+    setSelectedCourierId(null)
+    setManualReason('')
+    setCourierSearch('')
+    setAssignMsg('')
+    setAssignErr('')
+    setCouriersLoading(true)
+    try {
+      const data = await couriersApi.list({ page: 1, pageSize: 50 })
+      setCouriers(data.items)
+    } catch {
+      setCouriers([])
+    } finally {
+      setCouriersLoading(false)
+    }
+  }
+
+  const handleAutoAssign = async () => {
+    setAssignLoading(true)
+    setAssignMsg('')
+    setAssignErr('')
+    let successCount = 0
+    let failCount = 0
+    for (const orderId of selectedIds) {
+      try {
+        await assignmentsApi.autoAssign(orderId)
+        successCount++
+      } catch {
+        failCount++
+      }
+    }
+    setAssignLoading(false)
+    if (failCount === 0) {
+      setAssignMsg(`Авто-назначение выполнено для ${successCount} заказа(-ов)`)
+    } else {
+      setAssignMsg(`Успешно: ${successCount}, ошибок: ${failCount}`)
+    }
+    await loadOrders()
+  }
+
+  const handleManualAssign = async () => {
+    if (!selectedCourierId || selectedIds.length !== 1) return
+    setAssignLoading(true)
+    setAssignErr('')
+    try {
+      await assignmentsApi.manualAssign({
+        orderId: selectedIds[0],
+        courierId: selectedCourierId,
+        reason: manualReason,
+      })
+      setAssignMsg('Курьер успешно назначен')
+      setShowAssignModal(false)
+      await loadOrders()
+    } catch (err) {
+      setAssignErr(err.message || 'Ошибка при назначении')
+    } finally {
+      setAssignLoading(false)
+    }
+  }
+
   return (
     <div className="orders-page">
       <div className="orders-header">
@@ -182,6 +271,18 @@ export const OrdersPage = () => {
             }}
             className="orders-date"
           />
+          {isAdmin && selectedIds.length > 0 && (
+            <button
+              type="button"
+              className="orders-assign-btn"
+              onClick={openAssignModal}
+            >
+              Назначить курьера ({selectedIds.length})
+            </button>
+          )}
+          {assignMsg && !showAssignModal && (
+            <span className="orders-assign-msg">{assignMsg}</span>
+          )}
         </div>
 
         <div className="orders-toolbar-right">
@@ -201,9 +302,8 @@ export const OrdersPage = () => {
             + Создать
           </button>
         </div>
-        
       </div>
-      
+
       <div className="orders-table-wrapper">
         <table className="orders-table">
           <thead>
@@ -277,7 +377,130 @@ export const OrdersPage = () => {
       />
 
       {loading && <div className="orders-loading">Loading...</div>}
+
+      {/* Assign modal */}
+      {showAssignModal && (
+        <div className="orders-overlay">
+          <div className="orders-modal">
+            <div className="orders-modal-header">
+              <h2>Назначить курьера</h2>
+              <button
+                type="button"
+                className="orders-modal-close"
+                onClick={() => setShowAssignModal(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="orders-modal-body">
+              <p className="orders-modal-info">
+                Выбрано заказов: <strong>{selectedIds.length}</strong>
+              </p>
+
+              {/* Tabs — manual only for single order */}
+              {selectedIds.length === 1 && (
+                <div className="orders-modal-tabs">
+                  <button
+                    type="button"
+                    className={`orders-modal-tab${assignTab === 'auto' ? ' active' : ''}`}
+                    onClick={() => setAssignTab('auto')}
+                  >
+                    Авто-назначение
+                  </button>
+                  <button
+                    type="button"
+                    className={`orders-modal-tab${assignTab === 'manual' ? ' active' : ''}`}
+                    onClick={() => setAssignTab('manual')}
+                  >
+                    Выбрать курьера
+                  </button>
+                </div>
+              )}
+
+              {assignTab === 'auto' && (
+                <div className="orders-modal-auto">
+                  <p>
+                    Система автоматически подберёт ближайшего доступного курьера
+                    для {selectedIds.length > 1 ? `каждого из ${selectedIds.length} выбранных заказов` : 'выбранного заказа'}.
+                  </p>
+                  {assignMsg && <div className="orders-assign-ok">{assignMsg}</div>}
+                  {assignErr && <div className="orders-assign-error">{assignErr}</div>}
+                </div>
+              )}
+
+              {assignTab === 'manual' && selectedIds.length === 1 && (
+                <div className="orders-modal-manual">
+                  <input
+                    type="text"
+                    placeholder="Поиск по имени..."
+                    value={courierSearch}
+                    onChange={e => setCourierSearch(e.target.value)}
+                    className="orders-modal-search"
+                  />
+                  <div className="orders-courier-list">
+                    {couriersLoading ? (
+                      <div className="orders-courier-msg">Загрузка...</div>
+                    ) : filteredCouriers.length === 0 ? (
+                      <div className="orders-courier-msg">Нет курьеров</div>
+                    ) : filteredCouriers.map(c => (
+                      <div
+                        key={c.id}
+                        className={`orders-courier-row${selectedCourierId === c.id ? ' selected' : ''}`}
+                        onClick={() => setSelectedCourierId(c.id)}
+                      >
+                        <span className="orders-courier-name">{c.firstName} {c.lastName}</span>
+                        <span className={`od-ctype od-ctype--${(c.courierType || '').toLowerCase()}`}>
+                          {c.courierType === 'EMPLOYEE' ? 'Сотрудник' : 'Контрактор'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="orders-form-group">
+                    <label>Причина (необязательно)</label>
+                    <input
+                      type="text"
+                      value={manualReason}
+                      onChange={e => setManualReason(e.target.value)}
+                      placeholder="Укажите причину назначения..."
+                      className="orders-modal-search"
+                    />
+                  </div>
+                  {assignErr && <div className="orders-assign-error">{assignErr}</div>}
+                </div>
+              )}
+            </div>
+            <div className="orders-modal-footer">
+              <button
+                type="button"
+                className="orders-btn-cancel"
+                onClick={() => setShowAssignModal(false)}
+              >
+                Отмена
+              </button>
+              {assignTab === 'auto' && !assignMsg && (
+                <button
+                  type="button"
+                  className="orders-btn-primary"
+                  onClick={handleAutoAssign}
+                  disabled={assignLoading}
+                >
+                  {assignLoading ? 'Назначаем...' : 'Авто-назначить'}
+                </button>
+              )}
+              {assignTab === 'manual' && selectedIds.length === 1 && (
+                <button
+                  type="button"
+                  className="orders-btn-primary"
+                  onClick={handleManualAssign}
+                  disabled={!selectedCourierId || assignLoading}
+                >
+                  {assignLoading ? 'Назначаем...' : 'Назначить'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
-

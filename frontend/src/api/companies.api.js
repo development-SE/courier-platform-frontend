@@ -7,7 +7,7 @@ export const companiesApi = {
     const params = new URLSearchParams()
     if (search) params.append('search', search)
     params.append('page', page)
-    params.append('pageSize', pageSize)
+    params.append('size', pageSize)
 
     const data = await api.get(`/companies?${params.toString()}`, token)
     return {

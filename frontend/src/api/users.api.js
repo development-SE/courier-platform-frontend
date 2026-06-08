@@ -67,19 +67,10 @@ export const usersApi = {
     params.append('role', 'ADMIN')
     params.append('page', page)
     params.append('size', pageSize)
+    if (search) params.append('search', search)
 
     const data = await api.get(`/auth/users?${params.toString()}`, token)
     const items = (data.data || [])
-      .filter(user => {
-        const query = search.trim().toLowerCase()
-        if (!query) return true
-        return [
-          user.email,
-          user.firstName,
-          user.lastName,
-          user.phone,
-        ].some(value => String(value || '').toLowerCase().includes(query))
-      })
       .map(user => ({
         id: user.userId,
         firstName: user.firstName,
@@ -90,7 +81,7 @@ export const usersApi = {
         companyId: '',
         companyName: '---',
         companyBin: '',
-        isEmailVerified: user.isEmailVerified,
+        isEmailVerified: user.isEmailVerified || false,
       }))
 
     return {
@@ -138,19 +129,10 @@ export const usersApi = {
     params.append('role', 'CLIENT')
     params.append('page', page)
     params.append('size', pageSize)
+    if (search) params.append('search', search)
 
     const data = await api.get(`/auth/users?${params.toString()}`, token)
     const items = (data.data || [])
-      .filter(user => {
-        const query = search.trim().toLowerCase()
-        if (!query) return true
-        return [
-          user.email,
-          user.firstName,
-          user.lastName,
-          user.phone,
-        ].some(value => String(value || '').toLowerCase().includes(query))
-      })
       .map(user => ({
         id: user.userId,
         firstName: user.firstName || '',
@@ -158,7 +140,7 @@ export const usersApi = {
         email: user.email || '',
         phone: user.phone || '',
         role: user.role || 'CLIENT',
-        isEmailVerified: user.isEmailVerified,
+        isEmailVerified: user.isEmailVerified || false,
         createdAt: user.createdAt,
       }))
 
@@ -172,6 +154,8 @@ export const usersApi = {
     const token = auth.getToken()
     await api.delete(`/auth/users/${id}`, token)
   },
+
+
 
   
 }

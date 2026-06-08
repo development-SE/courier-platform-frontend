@@ -1,6 +1,8 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ordersApi } from '../../../api/ordersApi'
+import { addressesApi } from '../../../api/addresses.api'
+import { geocodeAddress } from '../../../utils/geocode'
 import {
   formatPhone,
   isValidDateTime,
@@ -126,6 +128,14 @@ export const useOrderCreateForm = () => {
   try {
     const selectedPickupPoint = pickupPoints.find(point => point.id === formData.pickupPoint)
 
+    // Geocode both addresses in parallel
+    const [deliveryCoords, pickupCoords] = await Promise.all([
+      geocodeAddress(formData.dropoffStreet, formData.dropoffHouse),
+      selectedPickupPoint?.latitude && selectedPickupPoint?.longitude
+        ? Promise.resolve({ lat: selectedPickupPoint.latitude, lng: selectedPickupPoint.longitude })
+        : geocodeAddress(selectedPickupPoint?.street, selectedPickupPoint?.house),
+    ])
+
     // Split recipientName into name + surname
     const nameParts = formData.recipientName.trim().split(' ')
     const recipientFirstName = nameParts[0] || ''
@@ -138,11 +148,15 @@ export const useOrderCreateForm = () => {
       dropoffHouse:      formData.dropoffHouse,
       dropoffApartment:  formData.dropoffApartment || undefined,
       dropoffEntrance:   formData.dropoffEntrance  || undefined,
+      dropoffLat:        deliveryCoords?.lat,
+      dropoffLng:        deliveryCoords?.lng,
       recipientName:     recipientFirstName,
       recipientSurname:  recipientSurname,
       recipientPhone:    formData.recipientPhone,
       pickupStreet:      selectedPickupPoint?.street || '',
       pickupHouse:       selectedPickupPoint?.house  || '',
+      pickupLat:         pickupCoords?.lat,
+      pickupLng:         pickupCoords?.lng,
       pickupContact:     formData.pickupContact      || 'Warehouse',
       items: [{
         itemId:   'ITEM-1',

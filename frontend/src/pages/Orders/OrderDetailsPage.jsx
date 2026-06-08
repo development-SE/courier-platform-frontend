@@ -1,6 +1,9 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { ordersApi } from '../../api/ordersApi'
+import { assignmentsApi } from '../../api/assignments.api'
+import { couriersApi } from '../../api/couriers.api'
+import { auth } from '../../utils/auth'
 import './orderDetailsPage.css'
 
 const STATUS_STEPS = [
@@ -44,10 +47,25 @@ const normalizeStatus = (status) => {
 
 export const OrderDetailsPage = () => {
   const { orderId } = useParams()
-  const [manualAssigned, setManualAssigned] = useState(false)
 
   const [order, setOrder] = useState(null)
   const [detailsLoading, setDetailsLoading] = useState(true)
+
+  // assign
+  const [autoLoading, setAutoLoading] = useState(false)
+  const [autoMsg, setAutoMsg] = useState('')
+  const [autoErr, setAutoErr] = useState('')
+  const [showManualModal, setShowManualModal] = useState(false)
+  const [couriers, setCouriers] = useState([])
+  const [couriersLoading, setCouriersLoading] = useState(false)
+  const [courierSearch, setCourierSearch] = useState('')
+  const [selectedCourierId, setSelectedCourierId] = useState(null)
+  const [manualReason, setManualReason] = useState('')
+  const [manualLoading, setManualLoading] = useState(false)
+  const [manualErr, setManualErr] = useState('')
+
+  const session = auth.getSession()
+  const isAdmin = session?.role === 'ADMIN' || session?.role === 'SUPER_ADMIN'
 
   useEffect(() => {
     if (!orderId) return
@@ -61,8 +79,8 @@ export const OrderDetailsPage = () => {
   const assigned = useMemo(() => {
     if (!order) return false
     const status = normalizeStatus(order.status)
-    return manualAssigned || status === 'assigned' || status === 'inProgress' || status === 'delivered'
-  }, [manualAssigned, order])
+    return status === 'assigned' || status === 'inProgress' || status === 'delivered'
+  }, [order])
 
   const courierInfo = useMemo(() => {
     if (!order || !assigned) return null
@@ -75,14 +93,80 @@ export const OrderDetailsPage = () => {
     }
   }, [assigned, order])
 
+  const filteredCouriers = useMemo(() => {
+    if (!courierSearch) return couriers
+    const q = courierSearch.toLowerCase()
+    return couriers.filter(c =>
+      `${c.firstName || ''} ${c.lastName || ''}`.toLowerCase().includes(q) ||
+      (c.email || '').toLowerCase().includes(q)
+    )
+  }, [couriers, courierSearch])
+
   const statusKey = normalizeStatus(order?.status)
+
+  const handleAutoAssign = async () => {
+    setAutoLoading(true)
+    setAutoMsg('')
+    setAutoErr('')
+    try {
+      await assignmentsApi.autoAssign(orderId)
+      setAutoMsg('Курьер успешно назначен автоматически')
+      const updated = await ordersApi.getById(orderId)
+      setOrder(updated)
+    } catch (err) {
+      setAutoErr(err.message || 'Ошибка при авто-назначении')
+    } finally {
+      setAutoLoading(false)
+    }
+  }
+
+  const openManualModal = async () => {
+    setShowManualModal(true)
+    setSelectedCourierId(null)
+    setManualReason('')
+    setManualErr('')
+    setCourierSearch('')
+    setCouriersLoading(true)
+    try {
+      const data = await couriersApi.list({ page: 1, pageSize: 50 })
+      setCouriers(data.items)
+    } catch {
+      setCouriers([])
+    } finally {
+      setCouriersLoading(false)
+    }
+  }
+
+  const handleManualAssign = async () => {
+    if (!selectedCourierId) return
+    setManualLoading(true)
+    setManualErr('')
+    try {
+      await assignmentsApi.manualAssign({ orderId, courierId: selectedCourierId, reason: manualReason })
+      setShowManualModal(false)
+      setAutoMsg('Курьер назначен вручную')
+      const updated = await ordersApi.getById(orderId)
+      setOrder(updated)
+    } catch (err) {
+      setManualErr(err.message || 'Ошибка при назначении')
+    } finally {
+      setManualLoading(false)
+    }
+  }
+
+  if (detailsLoading) {
+    return (
+      <div className="order-details-page">
+        <div className="order-details-header"><h1>Детали Заказа</h1></div>
+        <div className="details-card">Загрузка...</div>
+      </div>
+    )
+  }
 
   if (!order) {
     return (
       <div className="order-details-page">
-        <div className="order-details-header">
-          <h1>Детали Заказа</h1>
-        </div>
+        <div className="order-details-header"><h1>Детали Заказа</h1></div>
         <div className="details-card">Заказ не найден</div>
       </div>
     )
@@ -159,9 +243,30 @@ export const OrderDetailsPage = () => {
               <div className="courier-subtitle">Waiting for courier to accept</div>
               <div className="skeleton-line" />
               <div className="skeleton-line short" />
-              <button type="button" className="btn-ghost" onClick={() => setManualAssigned(true)}>
-                Simulate Assign
-              </button>
+              {isAdmin && (
+                <div className="assign-panel">
+                  {autoMsg && <div className="assign-success">{autoMsg}</div>}
+                  {autoErr && <div className="assign-error">{autoErr}</div>}
+                  <div className="assign-btns">
+                    <button
+                      type="button"
+                      className="btn-assign-auto"
+                      onClick={handleAutoAssign}
+                      disabled={autoLoading}
+                    >
+                      {autoLoading ? 'Назначаем...' : 'Авто-назначить'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-assign-manual"
+                      onClick={openManualModal}
+                      disabled={autoLoading}
+                    >
+                      Вручную
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="courier-info">
@@ -184,6 +289,7 @@ export const OrderDetailsPage = () => {
                 <span>Rating</span>
                 <strong className="rating">★★★★★ <span>{courierInfo.rating}</span></strong>
               </div>
+              {autoMsg && <div className="assign-success" style={{ marginTop: '0.5rem' }}>{autoMsg}</div>}
             </div>
           )}
         </div>
@@ -203,7 +309,7 @@ export const OrderDetailsPage = () => {
             <div>
               <div className="route-label">Dropoff Address</div>
               <div className="route-value">
-              {buildAddress(order.deliveryAddress?.street, order.deliveryAddress?.house, order.deliveryAddress?.apartment, order.deliveryAddress?.entrance)}
+                {buildAddress(order.deliveryAddress?.street, order.deliveryAddress?.house, order.deliveryAddress?.apartment, order.deliveryAddress?.entrance)}
               </div>
             </div>
           </div>
@@ -233,6 +339,84 @@ export const OrderDetailsPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Manual assign modal */}
+      {showManualModal && (
+        <div className="od-overlay">
+          <div className="od-modal">
+            <div className="od-modal-header">
+              <h2>Назначить курьера вручную</h2>
+              <button
+                type="button"
+                className="od-modal-close"
+                onClick={() => setShowManualModal(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="od-modal-body">
+              <p className="od-modal-info">
+                Заказ: <code>#{order.orderNumber}</code>
+              </p>
+              <input
+                type="text"
+                placeholder="Поиск по имени..."
+                value={courierSearch}
+                onChange={e => setCourierSearch(e.target.value)}
+                className="od-search"
+              />
+              <div className="od-courier-list">
+                {couriersLoading ? (
+                  <div className="od-list-msg">Загрузка...</div>
+                ) : filteredCouriers.length === 0 ? (
+                  <div className="od-list-msg">Нет курьеров</div>
+                ) : filteredCouriers.map(c => (
+                  <div
+                    key={c.id}
+                    className={`od-courier-row${selectedCourierId === c.id ? ' selected' : ''}`}
+                    onClick={() => setSelectedCourierId(c.id)}
+                  >
+                    <span className="od-courier-name">
+                      {c.firstName} {c.lastName}
+                    </span>
+                    <span className={`od-ctype od-ctype--${(c.courierType || '').toLowerCase()}`}>
+                      {c.courierType === 'EMPLOYEE' ? 'Сотрудник' : 'Контрактор'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="od-form-group">
+                <label>Причина (необязательно)</label>
+                <input
+                  type="text"
+                  value={manualReason}
+                  onChange={e => setManualReason(e.target.value)}
+                  placeholder="Укажите причину назначения..."
+                  className="od-search"
+                />
+              </div>
+              {manualErr && <div className="od-error">{manualErr}</div>}
+            </div>
+            <div className="od-modal-footer">
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => setShowManualModal(false)}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={handleManualAssign}
+                disabled={!selectedCourierId || manualLoading}
+              >
+                {manualLoading ? 'Назначаем...' : 'Назначить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

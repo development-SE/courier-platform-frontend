@@ -93,6 +93,14 @@ export const PartnerLayout = ({ children, currentPage }) => {
                 <span className="nav-icon"><img src="/src/assets/Users.png" alt="" /></span>
                 <span className="nav-text">Couriers</span>
               </Link>
+              <Link to="/assignments" className={`nav-link ${isActive('assignments') ? 'active' : ''}`}>
+                <span className="nav-icon"><img src="/src/assets/order.png" alt="" /></span>
+                <span className="nav-text">Диспетчерская</span>
+              </Link>
+              <Link to="/map" className={`nav-link ${isActive('map') ? 'active' : ''}`}>
+                <span className="nav-icon"><img src="/src/assets/Address.png" alt="" /></span>
+                <span className="nav-text">Карта</span>
+              </Link>
               <Link to="/addresses" className={`nav-link ${isActive('addresses') ? 'active' : ''}`}>
                 <span className="nav-icon"><img src="/src/assets/Address.png" alt="" /></span>
                 <span className="nav-text">Addresses</span>

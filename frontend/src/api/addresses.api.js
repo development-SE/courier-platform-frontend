@@ -10,7 +10,7 @@ export const addressesApi = {
       const params = new URLSearchParams()
       if (search) params.append('search', search)
       params.append('page', 1)
-      params.append('pageSize', 1000) // fetch all for local sorting/merging
+      params.append('size', 1000) // fetch all for local sorting/merging
       try {
         const data = await api.get(`/addresses?${params.toString()}`, token)
         return (data.content || []).map(item => ({ ...item, type: 'company' }))

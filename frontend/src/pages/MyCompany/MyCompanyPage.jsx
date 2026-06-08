@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { companiesApi } from '../../api/companies.api'
-import { usersApi } from '../../api/users.api'
+import { employeesApi } from '../../api/employees.api'
 import { addressesApi } from '../../api/addresses.api'
 import { auth } from '../../utils/auth'
 import { ConfirmDialog } from '../../components/common/ConfirmDialog'
@@ -79,7 +79,7 @@ export const MyCompanyPage = () => {
       setCompany(companyData)
 
       if (canEditCompanyProfile) {
-        const usersData = await usersApi.list({ page: 1, pageSize: 1000 })
+        const usersData = await employeesApi.list({ page: 1, pageSize: 1000 })
         const directorUser = usersData.items.find(user => user.role?.toUpperCase() === 'DIRECTOR') || null
         setDirector(directorUser)
       } else {
@@ -128,7 +128,7 @@ export const MyCompanyPage = () => {
     setLoading(true)
     setError(null)
     try {
-      const result = await usersApi.list({
+      const result = await employeesApi.list({
         search: employeeSearch,
         role: 'MANAGER',
         companyId,
@@ -208,7 +208,7 @@ export const MyCompanyPage = () => {
     setLoading(true)
     setError(null)
     try {
-      const updated = await usersApi.update(director.id, {
+      const updated = await employeesApi.update(director.id, {
         ...directorForm,
         companyId: director.companyId,
         role: director.role || 'DIRECTOR',
@@ -308,13 +308,13 @@ export const MyCompanyPage = () => {
 
     try {
       if (employeeModalMode === 'create') {
-        await usersApi.create({
+        await employeesApi.create({
           ...formData,
           companyId: company.id,
           role: 'MANAGER',
         })
       } else if (selectedEmployee) {
-        await usersApi.update(selectedEmployee.id, {
+        await employeesApi.update(selectedEmployee.id, {
           ...formData,
           companyId: company.id,
           role: 'MANAGER',
@@ -333,7 +333,7 @@ export const MyCompanyPage = () => {
     setLoading(true)
     setError(null)
     try {
-      await usersApi.remove(selectedEmployee.id)
+      await employeesApi.remove(selectedEmployee.id)
       setDeleteEmployeeOpen(false)
       setSelectedEmployee(null)
       await loadEmployees(company?.id)

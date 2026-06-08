@@ -1,6 +1,7 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { auth } from '../../utils/auth'
+import { authApi } from '../../api/auth.api'
 import authImageUrl from '../../assets/Auth.png'
 import './auth.css'
 
@@ -25,7 +26,16 @@ export const SignInPage = () => {
 
     setLoading(true)
     try {
-      const session = await auth.signIn(email, password)
+      const data = await authApi.login({ email, password })
+      const decoded = auth.decodeToken(data.accessToken)
+      const session = {
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+        role: data.role,
+        userId: decoded?.sub || null,
+        companyId: decoded?.companyId || null,
+      }
+      localStorage.setItem('auth_session', JSON.stringify(session))
       navigate(redirectTo || auth.getDefaultRoute(session), { replace: true })
     } catch (err) {
       setError(err.message)
@@ -68,9 +78,10 @@ export const SignInPage = () => {
                 {loading ? 'Signing in...' : 'Log in'}
               </button>
             </form>
-              <div className="auth-form-meta">
-                <button type="button" className="link-muted">Forgot password?</button>
-              </div>
+            <div className="auth-form-meta">
+              <Link to="/sign-up" className="link-muted">Create account</Link>
+              <button type="button" className="link-muted">Forgot password?</button>
+            </div>
           </div>
         </section>
       </div>

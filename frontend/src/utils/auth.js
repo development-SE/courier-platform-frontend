@@ -1,8 +1,17 @@
-import { api } from './api'
+import { api, BASE_URL } from './api'
 
 const SESSION_KEY = 'auth_session'
 
 export const auth = {
+  initialize() {
+    const session = this.getSession()
+    if (!session?.accessToken) {
+      localStorage.removeItem(SESSION_KEY)
+      return null
+    }
+    return session
+  },
+
   isAuthenticated() {
     return Boolean(this.getSession())
   },
@@ -65,16 +74,22 @@ export const auth = {
     return session
   },
 
-  async signUp({ firstName, lastName, email, password, phone }) {
-    await api.post('/auth/register', {
+  async signUp({ firstName, lastName, email, password, phone, role = 'ADMIN' }) {
+    const data = await api.post('/auth/register', {
       firstName,
       lastName,
       email,
       password,
       phone: phone || null,
       pushConsent: false,
-      role: 'CLIENT',
+      role,
     })
+
+    const confirmationToken = data?.data?.confirmationToken || null
+    return {
+      ...data,
+      verifyUrl: confirmationToken ? `${BASE_URL}/auth/verify?token=${confirmationToken}` : null,
+    }
   },
 
   signOut() {
