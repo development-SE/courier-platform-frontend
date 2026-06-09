@@ -44,7 +44,12 @@ export async function calculateRoute(
     method: 'POST',
     json: { origin, destination },
   })
-  if (backendRes.ok) return backendRes.data
+  if (backendRes.ok && backendRes.data?.encodedPolyline) {
+    const decoded = decodeRoutePolyline(backendRes.data.encodedPolyline, origin)
+    if (decoded.length > 3) {
+      return backendRes.data
+    }
+  }
 
   // Fall back to OSRM (free, no API key)
   const osrmRes = await fetchOsrmRoute(origin, destination)
@@ -53,11 +58,30 @@ export async function calculateRoute(
   return buildFallbackRoute(origin, destination)
 }
 
-export function decodeRoutePolyline(encodedPolyline: string): RoutePoint[] {
-  return polyline.decode(encodedPolyline).map(([latitude, longitude]) => ({
+export function decodeRoutePolyline(encodedPolyline: string, origin?: { lat: number; lng: number }): RoutePoint[] {
+  const decoded5 = polyline.decode(encodedPolyline).map(([latitude, longitude]) => ({
     latitude,
     longitude,
   }))
+
+  if (!origin || decoded5.length === 0) {
+    return decoded5
+  }
+
+  // Compute distance of first decoded coordinate to the expected origin using precision 5
+  const first5 = decoded5[0]
+  const dist5 = Math.abs(first5.latitude - origin.lat) + Math.abs(first5.longitude - origin.lng)
+
+  // Decode with precision 6 and compute its distance to the expected origin
+  const decoded6 = polyline.decode(encodedPolyline, 6).map(([latitude, longitude]) => ({
+    latitude,
+    longitude,
+  }))
+  const first6 = decoded6[0]
+  const dist6 = Math.abs(first6.latitude - origin.lat) + Math.abs(first6.longitude - origin.lng)
+
+  // Return whichever decoding fits the actual geographical origin closest
+  return dist6 < dist5 ? decoded6 : decoded5
 }
 
 function buildFallbackRoute(

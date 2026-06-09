@@ -14,6 +14,7 @@ export type CourierAssignmentResponse = {
   assignmentStatus: 'PENDING' | 'ASSIGNED' | 'ACCEPTED' | 'REJECTED' | 'PICKED_UP' | 'IN_TRANSIT' | 'ARRIVED' | 'DELIVERED' | 'CANCELLED' | 'FAILED'
   assignedAt: string
   etaMinutes?: number
+  transportType?: string
 }
 
 export type PagedAssignmentsPayload = {
@@ -29,6 +30,7 @@ export type CourierLocationResponse = {
   longitude: number
   isOnline: boolean
   updatedAt: string
+  transportType?: string
 }
 
 export async function getOrderAssignment(accessToken: string, orderId: string) {

@@ -38,6 +38,7 @@ import { UserSignInScreen } from './src/screens/auth/UserSignInScreen'
 import { UserSignUpScreen } from './src/screens/auth/UserSignUpScreen'
 import { UserCartScreen } from './src/screens/cart/UserCartScreen'
 import { RestaurantDetailScreen } from './src/screens/home/RestaurantDetailScreen'
+import { OrderStatusScreen } from './src/screens/home/OrderStatusScreen'
 import { UserHomeScreen } from './src/screens/home/UserHomeScreen'
 import { UserNotificationsScreen } from './src/screens/notifications/UserNotificationsScreen'
 import { UserOrderTrackingScreen } from './src/screens/orders/UserOrderTrackingScreen'
@@ -65,7 +66,7 @@ export default function App() {
   const [mainTab, setMainTab] = useState<'home' | 'orders' | 'cart' | 'profile'>('home')
   const [restaurantInitialScreen, setRestaurantInitialScreen] = useState<'menu' | 'cart'>('menu')
   const [overlayScreen, setOverlayScreen] = useState<
-    'notifications' | 'search' | 'address' | 'restaurant' | 'parcel' | 'order-tracking' | 'food-catalog' | 'groceries-catalog' | 'pharmacy-catalog' | null
+    'notifications' | 'search' | 'address' | 'restaurant' | 'parcel' | 'order-tracking' | 'order-status' | 'food-catalog' | 'groceries-catalog' | 'pharmacy-catalog' | null
   >(null)
   const [cartItems, setCartItems] = useState<Record<string, number>>({})
   const [mockFoodOrders, setMockFoodOrders] = useState<UserOrder[]>([])
@@ -75,6 +76,7 @@ export default function App() {
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0)
   const [foregroundNotification, setForegroundNotification] = useState<PushInboxNotification | null>(null)
   const [primaryAddress, setPrimaryAddress] = useState<string | undefined>(undefined)
+  const [primaryAddressObj, setPrimaryAddressObj] = useState<AddressResponse | undefined>(undefined)
   const [loading, setLoading] = useState(false)
   const [isSessionBootstrapping, setIsSessionBootstrapping] = useState(true)
   const [session, setSession] = useState<AuthSession | null>(null)
@@ -199,8 +201,9 @@ export default function App() {
     const addresses: AddressResponse[] = res.data?.content ?? []
     const primary = addresses.find(a => a.defaultAddress) ?? addresses[0]
     if (!primary) return
+    setPrimaryAddressObj(primary)
     const street = [primary.street, primary.house].filter(Boolean).join(', ')
-    setPrimaryAddress(street || primary.city)
+    setPrimaryAddress(street || primary.city || 'My Address')
   }, [])
 
   const clearMockFoodOrderTimers = useCallback(() => {
@@ -374,17 +377,29 @@ export default function App() {
       restaurantName: string
       total: number
       items: MockFoodCheckoutItem[]
+      serviceType: 'STANDARD' | 'SCHEDULED' | 'EXPRESS'
     }) => {
       if (!session?.accessToken) throw new Error('No access token')
 
+      const deliveryLat = primaryAddressObj?.latitude ?? 51.1350
+      const deliveryLon = primaryAddressObj?.longitude ?? 71.4450
       const createRes = await createFoodOrder(session.accessToken, {
         restaurantName: params.restaurantName,
         total: params.total,
         items: params.items,
         pickupLat: 51.1282,
         pickupLon: 71.4304,
-        deliveryLat: 51.1350,
-        deliveryLon: 71.4450,
+        deliveryStreet: primaryAddressObj?.street || 'Uly Dala Ave',
+        deliveryHouse: primaryAddressObj?.house || '8',
+        deliveryCity: primaryAddressObj?.city || 'Astana',
+        deliveryEntrance: primaryAddressObj?.entrance || '',
+        deliveryFloor: primaryAddressObj?.floor || '',
+        deliveryApartment: primaryAddressObj?.apartment || '',
+        deliveryLat,
+        deliveryLon,
+        serviceType: params.serviceType,
+        recipientName: [session.firstName, session.lastName].filter(Boolean).join(' ') || 'Client',
+        recipientPhone: session.phone || '+7 777 000 0000',
       })
       if (!createRes.ok) {
         throw new Error(createRes.error.message)
@@ -405,7 +420,7 @@ export default function App() {
       upsertMockFoodOrder(newOrder)
       return newOrder
     },
-    [session?.accessToken, upsertMockFoodOrder],
+    [session?.accessToken, upsertMockFoodOrder, primaryAddressObj],
   )
 
   const openRestaurantMenu = () => {
@@ -425,6 +440,11 @@ export default function App() {
   const openOrderTracking = (order: UserOrder) => {
     setSelectedOrder(order)
     setOverlayScreen('order-tracking')
+  }
+
+  const openActiveOrderTracking = (order: UserOrder) => {
+    setSelectedOrder(order)
+    setOverlayScreen('order-status')
   }
 
   const openNotificationTarget = useCallback(
@@ -654,7 +674,8 @@ export default function App() {
                 supplementalOrders={mockFoodOrders}
                 reloadKey={ordersReloadKey}
                 onUnauthorized={clearSession}
-                onOrderPress={openOrderTracking}
+                onActiveOrderPress={openActiveOrderTracking}
+                onPastOrderPress={openOrderTracking}
                 onHomePress={() => setMainTab('home')}
                 onCartPress={() => setMainTab('cart')}
                 onProfilePress={() => setMainTab('profile')}
@@ -802,6 +823,8 @@ export default function App() {
                 onClearCart={clearCart}
                 onFoodOrderPlaced={handleFoodOrderPlaced}
                 onBackPress={() => setOverlayScreen(null)}
+                deliveryAddress={primaryAddress}
+                onAddressEditPress={() => setOverlayScreen('address')}
               />
             ) : overlayScreen === 'parcel' ? (
               <UserParcelFlowScreen
@@ -812,6 +835,22 @@ export default function App() {
                   setMainTab('orders')
                 }}
                 onCreated={handleParcelCreated}
+              />
+            ) : overlayScreen === 'order-status' && selectedOrder ? (
+              <OrderStatusScreen
+                accessToken={session.accessToken}
+                orderId={selectedOrder.orderId}
+                restaurantName={selectedOrder.pickupInfo?.name || 'Restaurant'}
+                orderNumber={selectedOrder.orderId.slice(0, 8)}
+                total={selectedOrder.totalAmount ?? 0}
+                orderedItems={(selectedOrder.items ?? []).map(item => ({
+                  id: item.itemId ?? item.name ?? '',
+                  name: item.name ?? '',
+                  price: item.price ?? 0,
+                  image: '',
+                  quantity: item.quantity ?? 1,
+                }))}
+                onBackPress={() => setOverlayScreen(null)}
               />
             ) : overlayScreen === 'order-tracking' && selectedOrder ? (
               <UserOrderTrackingScreen

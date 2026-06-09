@@ -18,6 +18,9 @@ import * as Location from 'expo-location'
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { UserParcelCreateScreen } from './UserParcelCreateScreen'
+import { ParcelAddressSearchModal } from './ParcelAddressSearchModal'
+import { ParcelOrderAcceptingScreen } from './ParcelOrderAcceptingScreen'
+import { googleReverseGeocode } from '../../data/googleMapsApi'
 
 const { height: SCREEN_H } = Dimensions.get('window')
 
@@ -33,11 +36,11 @@ const TRANSPORT = [
 ]
 
 const ALMATY_CENTER = {
-  latitude: 43.238949,
-  longitude: 76.889709,
+  latitude: 51.169392,
+  longitude: 71.449074,
 }
 
-type Step = 'map' | 'form'
+type Step = 'map' | 'form' | 'accepting'
 
 type TransportId = (typeof TRANSPORT)[number]['id']
 
@@ -130,14 +133,11 @@ async function reverseGeocodeAddress(
   fallbackLabel: string,
 ) {
   try {
-    const results = await Location.reverseGeocodeAsync(coords)
-    const firstResult = results[0]
-    if (!firstResult) {
+    const result = await googleReverseGeocode(coords.latitude, coords.longitude)
+    if (!result) {
       return fallbackLabel
     }
-
-    const street = [firstResult.street, firstResult.streetNumber].filter(Boolean).join(' ').trim()
-    return street || firstResult.city || fallbackLabel
+    return result.street || result.city || fallbackLabel
   } catch {
     return fallbackLabel
   }
@@ -218,6 +218,9 @@ export function UserParcelFlowScreen({
   const [cardCVV, setCardCVV] = useState('')
   const [selectingCard, setSelectingCard] = useState(false)
   const [draft, setDraft] = useState<ParcelDraft | null>(null)
+  const [acceptingOrderId, setAcceptingOrderId] = useState<string | undefined>(undefined)
+  const [searchModalVisible, setSearchModalVisible] = useState(false)
+  const [searchModalField, setSearchModalField] = useState<'from' | 'to'>('from')
 
   const showSheet = () =>
     Animated.spring(sheetY, {
@@ -359,6 +362,28 @@ export function UserParcelFlowScreen({
     }
   }
 
+  const openSearchModal = (field: 'from' | 'to') => {
+    setSearchModalField(field)
+    setSearchModalVisible(true)
+  }
+
+  const handleSearchSelect = (address: string, coords: { latitude: number; longitude: number }) => {
+    if (searchModalField === 'from') {
+      setMyCoords(coords)
+      setMyAddress(address)
+      centerMap(coords, 0.012)
+    } else {
+      setDestCoords(coords)
+      setDestAddress(address)
+      if (myCoords) {
+        mapRef.current?.fitToCoordinates([myCoords, coords], {
+          edgePadding: { top: insets.top + 60, right: 60, bottom: 320, left: 60 },
+          animated: true,
+        })
+      }
+    }
+  }
+
   const cancelPicking = () => {
     setPickingDest(false)
     setPickingPickup(false)
@@ -393,6 +418,19 @@ export function UserParcelFlowScreen({
     setStep('form')
   }
 
+  if (step === 'accepting' && draft) {
+    const meta = getTransportMeta(draft.serviceType)
+    return (
+      <ParcelOrderAcceptingScreen
+        pickupAddress={draft.pickupAddress}
+        deliveryAddress={draft.deliveryAddress}
+        price={meta.price}
+        orderNumber={(acceptingOrderId ?? '').slice(-6).toUpperCase() || '------'}
+        onComplete={() => onCreated?.(acceptingOrderId)}
+      />
+    )
+  }
+
   if (step === 'form' && draft) {
     return (
       <UserParcelCreateScreen
@@ -404,7 +442,10 @@ export function UserParcelFlowScreen({
         initialPickupCoordinates={draft.pickupCoordinates}
         initialDeliveryCoordinates={draft.deliveryCoordinates}
         onBackPress={() => setStep('map')}
-        onCreated={onCreated}
+        onCreated={(orderId) => {
+          setAcceptingOrderId(orderId)
+          setStep('accepting')
+        }}
       />
     )
   }
@@ -534,7 +575,7 @@ export function UserParcelFlowScreen({
                       )}
                     </View>
 
-                    <TouchableOpacity onPress={startPickingPickup} style={styles.changeButton} activeOpacity={0.85}>
+                    <TouchableOpacity onPress={() => openSearchModal('from')} style={styles.changeButton} activeOpacity={0.85}>
                       <Text style={styles.changeButtonText}>Change</Text>
                     </TouchableOpacity>
                   </View>
@@ -547,7 +588,7 @@ export function UserParcelFlowScreen({
                     </View>
 
                     <TouchableOpacity
-                      onPress={startPickingDest}
+                      onPress={() => openSearchModal('to')}
                       activeOpacity={0.85}
                       style={styles.routeTextWrapNew}
                     >
@@ -561,7 +602,7 @@ export function UserParcelFlowScreen({
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                      onPress={destCoords ? clearDest : startPickingDest}
+                      onPress={destCoords ? clearDest : () => openSearchModal('to')}
                       style={styles.plusButton}
                       activeOpacity={0.85}
                     >
@@ -830,6 +871,16 @@ export function UserParcelFlowScreen({
           </KeyboardAvoidingView>
         </View>
       ) : null}
+
+      <ParcelAddressSearchModal
+        visible={searchModalVisible}
+        title={searchModalField === 'from' ? 'Pickup Point' : 'Destination'}
+        initialAddress={searchModalField === 'from' ? myAddress : destAddress}
+        initialCoords={searchModalField === 'from' ? myCoords : destCoords}
+        fallbackCoords={myCoords}
+        onClose={() => setSearchModalVisible(false)}
+        onSelect={handleSearchSelect}
+      />
     </View>
   )
 }

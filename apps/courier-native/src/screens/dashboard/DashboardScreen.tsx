@@ -12,12 +12,13 @@ import {
   ImageBackground,
   Linking,
 } from 'react-native'
-import MapView, { Marker } from 'react-native-maps'
+import MapView, { Marker, Polyline } from 'react-native-maps'
 import { Ionicons } from '@expo/vector-icons'
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet'
 import { useNavigation } from '@react-navigation/native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
+import * as Notifications from 'expo-notifications'
 import { SCREEN_IDS } from '../../constants/screenIds'
 import { appTheme } from '../../theme/appTheme'
 import { useDashboardModel } from './useDashboardModel'
@@ -30,10 +31,10 @@ const STATUS_LABEL: Record<'offline' | 'online' | 'busy', string> = {
 }
 
 const ACTIVE_STAGE_ACTION_LABEL: Record<'arrived' | 'pickedUp' | 'onWay' | 'delivered', string> = {
-  arrived: 'Arrived at Pickup',
-  pickedUp: 'Picked up',
-  onWay: 'In transit',
-  delivered: 'Delivered',
+  arrived: 'Mark Picked Up',
+  pickedUp: 'Start Delivery',
+  onWay: 'Mark Arrived',
+  delivered: 'Enter Confirmation Code',
 }
 
 const DARK_MAP_STYLE = [
@@ -89,6 +90,25 @@ function getInitials(fullName: string) {
     .join('')
 }
 
+function calculateBearing(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const dLng = (lon2 - lon1) * (Math.PI / 180)
+  const fLat1 = lat1 * (Math.PI / 180)
+  const fLat2 = lat2 * (Math.PI / 180)
+
+  const y = Math.sin(dLng) * Math.cos(fLat2)
+  const x =
+    Math.cos(fLat1) * Math.sin(fLat2) -
+    Math.sin(fLat1) * Math.cos(fLat2) * Math.cos(dLng)
+
+  const bearing = (Math.atan2(y, x) * 180) / Math.PI
+  return (bearing + 360) % 360
+}
+
 export function DashboardScreen() {
   const navigation = useNavigation<any>()
   const insets = useSafeAreaInsets()
@@ -99,6 +119,8 @@ export function DashboardScreen() {
   const [isOtpModalVisible, setIsOtpModalVisible] = useState(false)
   const [otpCode, setOtpCode] = useState('')
   const [isVerifying, setIsVerifying] = useState(false)
+  const mapRef = useRef<MapView | null>(null)
+  const [isNavigating, setIsNavigating] = useState(false)
 
   const {
     courier,
@@ -129,6 +151,7 @@ export function DashboardScreen() {
     pendingAssignments,
     activeAssignments,
     completedAssignments,
+    routeCoords,
   } = useDashboardModel()
 
   const syncFreshnessText = locationSyncPending
@@ -192,9 +215,25 @@ export function DashboardScreen() {
         : 'END SHIFT'
 
   const openOrderDetails = () => {
-    if (!activeOrder?.id) return
-    navigation.navigate(SCREEN_IDS.ORDER_DETAIL, { orderId: activeOrder.id })
+    if (!activeOrder) return
+    navigation.navigate(SCREEN_IDS.ORDER_DETAIL, {
+      orderId: activeOrder.orderId,
+      assignmentId: activeOrder.id,
+    })
   }
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data
+      if (data?.orderId && data?.assignmentId) {
+        navigation.navigate(SCREEN_IDS.ORDER_DETAIL, {
+          orderId: data.orderId,
+          assignmentId: data.assignmentId,
+        })
+      }
+    })
+    return () => subscription.remove()
+  }, [navigation])
 
   const incomingDistance = incomingOrder?.distance ?? '0 km'
   const incomingEta = `${incomingOrder?.estimatedMin ?? 0} min`
@@ -202,8 +241,8 @@ export function DashboardScreen() {
   const incomingVisible = Boolean(showIncoming && incomingOrder && !hasActiveOrder)
   const showIncomingOverlay = incomingVisible && sheetIndex === 0
   const snapPoints = useMemo(() => {
-    if (hasActiveOrder) return [220, 540]
-    return [320, 520]
+    if (hasActiveOrder) return [220, 560]
+    return [240, 400]
   }, [hasActiveOrder])
   const [renderIncomingOverlay, setRenderIncomingOverlay] = useState(showIncomingOverlay)
   const incomingOverlayProgress = useSharedValue(showIncomingOverlay ? 1 : 0)
@@ -264,8 +303,32 @@ export function DashboardScreen() {
     }
   })
 
+  const idleHelperAnimatedStyle = useAnimatedStyle(() => {
+    const progress = interpolate(animatedIndex.value, [0, 1], [0, 1], Extrapolation.CLAMP)
+    return {
+      opacity: progress,
+      maxHeight: interpolate(progress, [0, 1], [0, 30], Extrapolation.CLAMP),
+      marginTop: interpolate(progress, [0, 1], [0, 4], Extrapolation.CLAMP),
+      overflow: 'hidden',
+    }
+  })
+
+  const idleParkRowAnimatedStyle = useAnimatedStyle(() => {
+    const progress = interpolate(animatedIndex.value, [0, 1], [0, 1], Extrapolation.CLAMP)
+    return {
+      opacity: progress,
+      maxHeight: interpolate(progress, [0, 1], [0, 80], Extrapolation.CLAMP),
+      marginTop: interpolate(progress, [0, 1], [0, 12], Extrapolation.CLAMP),
+      overflow: 'hidden',
+    }
+  })
+
   useEffect(() => {
-    bottomSheetRef.current?.snapToIndex(hasActiveOrder ? 1 : 0)
+    if (hasActiveOrder) {
+      bottomSheetRef.current?.snapToIndex(0)
+    } else {
+      bottomSheetRef.current?.snapToIndex(1)
+    }
   }, [hasActiveOrder])
 
   useEffect(() => {
@@ -292,23 +355,137 @@ export function DashboardScreen() {
     }, 180)
   }, [showIncomingOverlay, incomingOverlayProgress])
 
-  useEffect(
-    () => () => {
-      if (!incomingOverlayTimerRef.current) return
-      clearTimeout(incomingOverlayTimerRef.current)
-      incomingOverlayTimerRef.current = null
-    },
-    [],
-  )
+  useEffect(() => {
+    if (!hasActiveOrder) {
+      setIsNavigating(false)
+    }
+  }, [hasActiveOrder])
+
+  useEffect(() => {
+    if (!isNavigating || !mapRef.current) return
+
+    let destination = activeOrder?.pickupCoordinates
+    if (stage === 'onWay' || stage === 'delivered') {
+      destination = activeOrder?.deliveryCoordinates
+    }
+
+    if (!destination) return
+
+    const nextPoint = (routeCoords && routeCoords.length > 1) ? routeCoords[1] : destination
+    const bearing = calculateBearing(latitude, longitude, nextPoint.latitude, nextPoint.longitude)
+
+    mapRef.current.animateCamera({
+      center: { latitude, longitude },
+      pitch: 55,
+      heading: bearing,
+      zoom: 17.5,
+    }, { duration: 800 })
+  }, [isNavigating, latitude, longitude, activeOrder, stage, routeCoords])
+
+  const handleToggleNavigation = () => {
+    const nextState = !isNavigating
+    setIsNavigating(nextState)
+
+    if (!nextState && mapRef.current) {
+      mapRef.current.animateCamera({
+        pitch: 0,
+        heading: 0,
+        zoom: 14.5,
+      }, { duration: 800 })
+    }
+  }
+
+  const mapControlsAnimatedStyle = useAnimatedStyle(() => {
+    const bottomOffset = hasActiveOrder
+      ? interpolate(animatedIndex.value, [0, 1], [220 + 16, 560 + 16], Extrapolation.CLAMP)
+      : interpolate(animatedIndex.value, [0, 1], [240 + 16, 400 + 16], Extrapolation.CLAMP)
+    return {
+      bottom: bottomOffset,
+    }
+  })
+
+  const handleRecenter = () => {
+    if (mapRef.current) {
+      mapRef.current.animateCamera({
+        center: { latitude, longitude },
+        zoom: isNavigating ? 17.5 : 14.5,
+        pitch: isNavigating ? 55 : 0,
+      }, { duration: 800 })
+    }
+  }
+
+  const handleResetCompass = () => {
+    if (mapRef.current) {
+      mapRef.current.animateCamera({
+        heading: 0,
+        pitch: 0,
+      }, { duration: 800 })
+    }
+  }
+
+  const handleZoomIn = async () => {
+    if (mapRef.current) {
+      try {
+        const camera = await mapRef.current.getCamera()
+        mapRef.current.animateCamera({
+          zoom: (camera.zoom ?? 14.5) + 1,
+        }, { duration: 400 })
+      } catch (err) {
+        console.warn(err)
+      }
+    }
+  }
+
+  const handleZoomOut = async () => {
+    if (mapRef.current) {
+      try {
+        const camera = await mapRef.current.getCamera()
+        mapRef.current.animateCamera({
+          zoom: (camera.zoom ?? 14.5) - 1,
+        }, { duration: 400 })
+      } catch (err) {
+        console.warn(err)
+      }
+    }
+  }
 
   return (
     <View style={styles.screen}>
-      <MapView style={StyleSheet.absoluteFill} customMapStyle={DARK_MAP_STYLE} initialRegion={region}>
+      <MapView
+        ref={mapRef}
+        style={StyleSheet.absoluteFill}
+        customMapStyle={DARK_MAP_STYLE}
+        initialRegion={region}
+        onPress={() => {
+          console.log('[DashboardScreen] Map pressed. Snapping bottom sheet to index 0.')
+          bottomSheetRef.current?.snapToIndex(0)
+        }}
+      >
         <Marker
           coordinate={{ latitude, longitude }}
           title={courierName}
           description={courierPark}
         />
+
+        {hasActiveOrder && activeOrder?.pickupCoordinates ? (
+          <Marker coordinate={activeOrder.pickupCoordinates} title="Pickup (A)">
+            <View style={styles.markerPickup}>
+              <Text style={styles.markerText}>A</Text>
+            </View>
+          </Marker>
+        ) : null}
+
+        {hasActiveOrder && activeOrder?.deliveryCoordinates ? (
+          <Marker coordinate={activeOrder.deliveryCoordinates} title="Delivery (B)">
+            <View style={styles.markerDelivery}>
+              <Text style={styles.markerText}>B</Text>
+            </View>
+          </Marker>
+        ) : null}
+
+        {hasActiveOrder && routeCoords && routeCoords.length > 1 ? (
+          <Polyline coordinates={routeCoords} strokeColor="#A7391E" strokeWidth={4} />
+        ) : null}
       </MapView>
 
       <View pointerEvents="box-none" style={[styles.topBarContainer, { top: insets.top + 12 }]}>
@@ -354,9 +531,51 @@ export function DashboardScreen() {
         </Animated.View>
       ) : null}
 
+      <Animated.View pointerEvents="box-none" style={[styles.mapControlsContainer, mapControlsAnimatedStyle]}>
+        {/* Reset Compass Button */}
+        <Pressable style={styles.mapIconButton} onPress={handleResetCompass}>
+          <Ionicons name="compass-outline" size={20} color="#d6d9e5" />
+        </Pressable>
+
+        {/* Zoom In Button */}
+        <Pressable style={styles.mapIconButton} onPress={handleZoomIn}>
+          <Ionicons name="add" size={20} color="#d6d9e5" />
+        </Pressable>
+
+        {/* Zoom Out Button */}
+        <Pressable style={styles.mapIconButton} onPress={handleZoomOut}>
+          <Ionicons name="remove" size={20} color="#d6d9e5" />
+        </Pressable>
+
+        {/* Recenter Button */}
+        <Pressable style={styles.mapIconButton} onPress={handleRecenter}>
+          <Ionicons name="locate" size={20} color="#ee8f5e" />
+        </Pressable>
+
+        {/* 3D Navigation mode Toggle (if active order exists) */}
+        {hasActiveOrder && (
+          <Pressable
+            style={[
+              styles.floatingNavBtnInline,
+              isNavigating && styles.floatingNavBtnActive,
+            ]}
+            onPress={handleToggleNavigation}
+          >
+            <Ionicons
+              name={isNavigating ? "navigate" : "navigate-outline"}
+              size={18}
+              color={isNavigating ? "#ffffff" : "#d6d9e5"}
+            />
+            <Text style={[styles.floatingNavBtnText, isNavigating && styles.floatingNavBtnTextActive]}>
+              {isNavigating ? "Навигация 3D" : "3D Режим"}
+            </Text>
+          </Pressable>
+        )}
+      </Animated.View>
+
       <BottomSheet
         ref={bottomSheetRef}
-        index={0}
+        index={hasActiveOrder ? 0 : 1}
         animatedIndex={animatedIndex}
         snapPoints={snapPoints}
         enableDynamicSizing={false}
@@ -383,7 +602,9 @@ export function DashboardScreen() {
                   <View style={[styles.statusDot, status === 'online' ? styles.statusDotOnline : status === 'busy' ? styles.statusDotBusy : styles.statusDotOffline]} />
                   <Text style={styles.statusText}>{STATUS_LABEL[status]}</Text>
                 </View>
-                <Text style={styles.helperText}>{statusHelper}</Text>
+                <Animated.View style={idleHelperAnimatedStyle}>
+                  <Text style={styles.helperText}>{statusHelper}</Text>
+                </Animated.View>
               </>
             ) : null}
 
@@ -393,10 +614,9 @@ export function DashboardScreen() {
                   <View style={[styles.statusDot, status === 'online' ? styles.statusDotOnline : status === 'busy' ? styles.statusDotBusy : styles.statusDotOffline]} />
                   <Text style={styles.statusText}>{STATUS_LABEL[status]}</Text>
                 </View>
-                <Text style={styles.helperText}>{statusHelper}</Text>
                 <View style={styles.activeCompactCard}>
                   <Text numberOfLines={1} style={styles.activeCompactTitle}>{activeOrder.pickupAddress}</Text>
-                  <Text style={styles.activeCompactHint}>Order #{activeOrder.id} · {stageMeta.chip}</Text>
+                  <Text style={styles.activeCompactHint}>{stageMeta.chip}</Text>
                 </View>
                 <View style={styles.collapsedActionRow}>
                   <Pressable style={styles.collapsedSecondaryButton} onPress={openOrderDetails}>
@@ -435,18 +655,20 @@ export function DashboardScreen() {
                 <MetricTile icon="reload-outline" label="COMPLETED" value={completedAssignmentsCount} />
               </View>
 
-              <Pressable style={styles.parkRow} onPress={() => navigation.navigate(SCREEN_IDS.ORDERS)}>
-                <View style={styles.parkMain}>
-                  <Text style={styles.parkTitle}>{courierPark}</Text>
-                  <Text style={styles.parkHint}>
-                    {status === 'offline' ? 'No orders nearby' : 'Tap to open order feed'}
-                  </Text>
-                </View>
-                <View style={styles.boostBadge}>
-                  <Text style={styles.boostText}>X1.2 BOOST</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color="#6f7485" />
-              </Pressable>
+              <Animated.View style={idleParkRowAnimatedStyle}>
+                <Pressable style={styles.parkRow} onPress={() => navigation.navigate(SCREEN_IDS.ORDERS)}>
+                  <View style={styles.parkMain}>
+                    <Text style={styles.parkTitle}>{courierPark}</Text>
+                    <Text style={styles.parkHint}>
+                      {status === 'offline' ? 'No orders nearby' : 'Tap to open order feed'}
+                    </Text>
+                  </View>
+                  <View style={styles.boostBadge}>
+                    <Text style={styles.boostText}>X1.2 BOOST</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#6f7485" />
+                </Pressable>
+              </Animated.View>
             </View>
           ) : null}
 
@@ -454,17 +676,23 @@ export function DashboardScreen() {
             {hasActiveOrder && activeOrder ? (
               <>
                 <View style={styles.activeDetailsCard}>
-                  <View style={styles.pickupTitleRow}>
-                    <Text style={styles.pickupTitleText} numberOfLines={2}>
-                      {activeOrder.pickupAddress}
-                    </Text>
-                    <View style={styles.pickupNavIconWrap}>
-                      <Ionicons name="navigate" size={15} color="#f08d5a" />
+                  {/* Timeline Addresses */}
+                  <View style={styles.addressTimeline}>
+                    <View style={styles.timelineSpine}>
+                      <View style={[styles.timelineDot, styles.dotPickup]} />
+                      <View style={styles.timelineLine} />
+                      <View style={[styles.timelineDot, styles.dotDelivery]} />
                     </View>
-                  </View>
-                  <View style={styles.pickupSubRow}>
-                    <View style={styles.pickupDot} />
-                    <Text style={styles.pickupSubText}>Pickup location · 250m away</Text>
+                    <View style={styles.timelineAddresses}>
+                      <View style={styles.addressBlock}>
+                        <Text style={styles.addressLabel}>ОТКУДА (A)</Text>
+                        <Text style={styles.addressText} numberOfLines={2}>{activeOrder.pickupAddress}</Text>
+                      </View>
+                      <View style={[styles.addressBlock, { marginTop: 14 }]}>
+                        <Text style={styles.addressLabel}>КУДА (B)</Text>
+                        <Text style={styles.addressText} numberOfLines={2}>{activeOrder.deliveryAddress}</Text>
+                      </View>
+                    </View>
                   </View>
 
                   <View style={styles.activeMetricsRow}>
@@ -478,35 +706,56 @@ export function DashboardScreen() {
                       </View>
                     </View>
                     <View style={styles.activeMetricCard}>
-                      <Text style={styles.activeMetricLabel}>PACKAGE</Text>
+                      <Text style={styles.activeMetricLabel}>SERVICE TYPE</Text>
                       <View style={styles.packageLine}>
-                        <Ionicons name="cube" size={14} color="#f08d5a" />
-                        <Text style={styles.activeMetricValueSmall}>Standard Parcel</Text>
+                        <Ionicons name="flash" size={14} color="#f08d5a" />
+                        <Text style={styles.activeMetricValueSmall}>{activeOrder.serviceType || 'Standard'}</Text>
                       </View>
-                      <Text style={styles.activeMetricHint}>under 5kg</Text>
+                      <Text style={styles.activeMetricHint}>Delivery Service</Text>
                     </View>
                   </View>
 
-                  <View style={styles.courierRow}>
-                    <View style={styles.courierMain}>
-                      <View style={styles.courierAvatar}>
-                        <Text style={styles.courierAvatarText}>{getInitials(courierName)}</Text>
+                  {/* Customer Details Row */}
+                  <View style={styles.clientRow}>
+                    <View style={styles.clientMain}>
+                      <View style={styles.clientAvatar}>
+                        <Text style={styles.clientAvatarText}>{getInitials(activeOrder.client)}</Text>
                       </View>
-                      <View style={styles.courierMeta}>
-                        <Text style={styles.courierNameText} numberOfLines={1}>{courierName}</Text>
-                        <Text style={styles.courierPhoneText}>{courierPhone}</Text>
+                      <View style={styles.clientMeta}>
+                        <Text style={styles.clientNameText} numberOfLines={1}>{activeOrder.client}</Text>
+                        <Text style={styles.clientPhoneText}>{activeOrder.clientPhone || '+7 777 123 45 67'}</Text>
                       </View>
                     </View>
-                    <View style={styles.courierActions}>
-                      <Pressable style={styles.courierActionBtn}>
+                    <View style={styles.clientActions}>
+                      <Pressable 
+                        style={styles.clientActionBtn}
+                        onPress={() => activeOrder.clientPhone && Linking.openURL(`sms:${activeOrder.clientPhone}`)}
+                      >
                         <Ionicons name="chatbox" size={14} color="#f1f3f8" />
                       </Pressable>
-                      <Pressable style={styles.courierActionBtnPrimary}>
+                      <Pressable 
+                        style={styles.clientActionBtnPrimary}
+                        onPress={() => activeOrder.clientPhone && Linking.openURL(`tel:${activeOrder.clientPhone}`)}
+                      >
                         <Ionicons name="call" size={14} color="#2d1b13" />
                       </Pressable>
                     </View>
                   </View>
 
+                  {activeOrder.comment ? (
+                    <View style={styles.commentBox}>
+                      <Ionicons name="megaphone-outline" size={14} color="#ee8f5e" />
+                      <Text style={styles.commentText} numberOfLines={2}>
+                        "{activeOrder.comment}"
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {/* Order Details Button */}
+                  <Pressable style={styles.cardDetailsBtn} onPress={openOrderDetails}>
+                    <Text style={styles.cardDetailsBtnText}>Детали заказа</Text>
+                    <Ionicons name="arrow-forward" size={16} color="#2d1b13" />
+                  </Pressable>
                 </View>
               </>
             ) : null}
@@ -1558,5 +1807,255 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     flex: 1,
+  },
+  markerPickup: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#446744',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  markerDelivery: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#A7391E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  markerText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  floatingNavBtn: {
+    position: 'absolute',
+    right: 16,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(26, 29, 41, 0.9)',
+    borderWidth: 1,
+    borderColor: '#30354b',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 20,
+  },
+  floatingNavBtnActive: {
+    backgroundColor: '#A7391E',
+    borderColor: '#ff623d',
+  },
+  floatingNavBtnText: {
+    color: '#d6d9e5',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  floatingNavBtnTextActive: {
+    color: '#ffffff',
+  },
+  addressTimeline: {
+    flexDirection: 'row',
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  timelineSpine: {
+    width: 16,
+    alignItems: 'center',
+    marginRight: 12,
+    paddingTop: 4,
+  },
+  timelineDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2.5,
+    borderColor: '#343237',
+  },
+  dotPickup: {
+    backgroundColor: '#ee8f5e',
+  },
+  dotDelivery: {
+    backgroundColor: '#ee8f5e',
+  },
+  timelineLine: {
+    flex: 1,
+    width: 1.5,
+    backgroundColor: '#ee8f5e',
+    opacity: 0.25,
+    marginVertical: 4,
+  },
+  timelineAddresses: {
+    flex: 1,
+    gap: 8,
+  },
+  addressBlock: {
+    gap: 2,
+  },
+  addressLabel: {
+    color: '#8a8e9c',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  addressText: {
+    color: '#f2f3f7',
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  clientRow: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#38363d',
+    backgroundColor: '#272530',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  clientMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  clientAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#4a3d3c',
+    borderWidth: 1.5,
+    borderColor: '#ee8f5e',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clientAvatarText: {
+    color: '#f0f1f7',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  clientMeta: {
+    flex: 1,
+  },
+  clientNameText: {
+    color: '#f0f2f7',
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  clientPhoneText: {
+    marginTop: 1,
+    color: '#8c91a0',
+    fontSize: 12,
+  },
+  clientActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  clientActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#4a4852',
+    backgroundColor: '#2a2930',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clientActionBtnPrimary: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#ee8f5e',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commentBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(238, 143, 94, 0.08)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  commentText: {
+    flex: 1,
+    color: '#ee8f5e',
+    fontSize: 12,
+    fontWeight: '500',
+    fontStyle: 'italic',
+  },
+  cardDetailsBtn: {
+    minHeight: 46,
+    borderRadius: 12,
+    backgroundColor: '#ee8f5e',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#ee8f5e',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
+    marginTop: 4,
+  },
+  cardDetailsBtnText: {
+    color: '#2d1b13',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  mapControlsContainer: {
+    position: 'absolute',
+    right: 16,
+    alignItems: 'flex-end',
+    gap: 8,
+    zIndex: 20,
+  },
+  mapIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#2a2f3f',
+    backgroundColor: 'rgba(22, 25, 36, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  floatingNavBtnInline: {
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(26, 29, 41, 0.9)',
+    borderWidth: 1,
+    borderColor: '#30354b',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
   },
 })

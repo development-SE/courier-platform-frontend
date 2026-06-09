@@ -101,8 +101,8 @@ export async function listMyAssignments(
   page: number = 1,
   pageSize: number = 20,
 ) {
-  let path = `/api/v1/logistics/assignments?courierId=${courierId}&page=${page}&pageSize=${pageSize}`
-  if (status) {
+  let path = `/api/v1/logistics/assignments?=${courierId}&page=${page}&pageSize=${pageSize}`
+  if (status) {courierId
     path += `&status=${status}`
   }
   return apiRequest<ApiResponse<PagedAssignments>>(path, {
@@ -169,11 +169,21 @@ export type OrderResponse = {
   totalAmount: number
   pickupAddress?: {
     street?: string
+    city?: string
+    house?: string
+    apartment?: string
+    entrance?: string
+    floor?: string
     latitude?: number
     longitude?: number
   }
   deliveryAddress?: {
     street?: string
+    city?: string
+    house?: string
+    apartment?: string
+    entrance?: string
+    floor?: string
     latitude?: number
     longitude?: number
   }
@@ -182,6 +192,12 @@ export type OrderResponse = {
     phone?: string
   }
   deliveryConfirmationCode?: string
+  items?: {
+    itemId?: string
+    name?: string
+    quantity: number
+    price?: number
+  }[]
 }
 
 /**

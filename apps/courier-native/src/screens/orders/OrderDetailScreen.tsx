@@ -10,13 +10,15 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Linking,
+  Platform,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useQuery } from '@tanstack/react-query'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 import { useShallow } from 'zustand/react/shallow'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { SCREEN_IDS } from '../../constants/screenIds'
+import { SCREEN_IDS, ROOT_ROUTES } from '../../constants/screenIds'
 import { appTheme } from '../../theme/appTheme'
 import { fetchDashboardSnapshotFromCore, fetchOrdersFromCore } from '../../data/coreClient'
 import type { RootStackParamList } from '../../navigation/types'
@@ -29,6 +31,8 @@ type Props = NativeStackScreenProps<RootStackParamList, typeof SCREEN_IDS.ORDER_
 type OrderView = {
   id: string
   client: string
+  recipientName: string
+  recipientPhone: string
   pickupAddress: string
   deliveryAddress: string
   earnings: number
@@ -39,6 +43,8 @@ type OrderView = {
   comment: string
   parcelsCount: number
   payment: string
+  serviceType: string
+  items?: { name: string; quantity: number }[]
 }
 
 const ACTIVE_STAGE_ACTION_LABEL: Record<'arrived' | 'pickedUp' | 'onWay' | 'delivered', string> = {
@@ -59,6 +65,37 @@ function getNumber(value: unknown, fallback = 0) {
 function normalizePayment(payment: string) {
   if (!payment) return 'Cashless'
   return payment === 'cashless' ? 'Cashless' : payment
+}
+
+const MOCK_RECIPIENTS: Record<string, { name: string; phone: string }> = {
+  'KFC': { name: 'Алихан Сыздыков', phone: '+7 701 555 33 22' },
+  'АШАН Гипермаркет': { name: 'Алия Сыздыкова', phone: '+7 777 999 88 77' },
+  'Магнит': { name: 'Дмитрий Ковалев', phone: '+7 705 444 11 00' },
+  'Пятёрочка': { name: 'Елена Воронова', phone: '+7 702 888 77 66' },
+}
+
+const CLIENT_MOCK_ITEMS: Record<string, string[]> = {
+  'KFC': [
+    '🍔 Шефбургер Острый',
+    '🍟 Картофель Фри средний',
+    '🥤 Напиток Газированный Pepsi 0.5л',
+  ],
+  'АШАН Гипермаркет': [
+    '🥛 Молоко Домик в деревне 3.2% (1л)',
+    '🍞 Хлеб Тостовый Harrys',
+    '🥚 Яйца куриные С1 (10 шт.)',
+    '🍎 Яблоки сезонные (1.5 кг)',
+  ],
+  'Магнит': [
+    '🍫 Шоколад молочный Alpen Gold Max Fun',
+    '🍌 Бананы спелые (1.2 кг)',
+    '🧴 Жидкое мыло Safeguard Классическое 225мл',
+  ],
+  'Пятёрочка': [
+    '☕ Кофе растворимый Jacobs Monarch 95г',
+    '🥐 Круассаны 7 Days с кремом какао (2 шт.)',
+    '🍬 Конфеты Raffaello коробка 150г',
+  ],
 }
 
 export function OrderDetailScreen({ navigation, route }: Props) {
@@ -106,6 +143,7 @@ export function OrderDetailScreen({ navigation, route }: Props) {
   const [isOtpModalVisible, setIsOtpModalVisible] = useState(false)
   const [otpCode, setOtpCode] = useState('')
   const [isVerifying, setIsVerifying] = useState(false)
+  const [codeTimedOut, setCodeTimedOut] = useState(false)
 
   const {
     activeOrderId,
@@ -176,38 +214,51 @@ export function OrderDetailScreen({ navigation, route }: Props) {
 
   const order = useMemo<OrderView | null>(() => {
     if (realOrder) {
+      const recipientName = realOrder.recipientInfo?.name || 'Client'
+      const recipientPhone = realOrder.recipientInfo?.phone || '+7 777 000 0000'
+      const clientName = realOrder.serviceType?.toLowerCase() === 'food' ? 'KFC' : (realOrder.pickupAddress?.street || 'Store')
+
       return {
         id: realOrder.orderId,
-        client: realOrder.recipientInfo?.name || 'Customer',
+        client: clientName,
+        recipientName,
+        recipientPhone,
         pickupAddress: realOrder.pickupAddress?.street || 'Astana Store',
         deliveryAddress: realOrder.deliveryAddress?.street || 'Delivery Address',
         earnings: realOrder.totalAmount || 1200,
         distance: '2.4 km',
         estimatedMin: 15,
         pickupCode: realOrder.deliveryConfirmationCode || '000000',
-        clientPhone: realOrder.recipientInfo?.phone || '+7 777 123 45 67',
+        clientPhone: recipientPhone,
         comment: realOrder.comment || 'No instructions',
         parcelsCount: 1,
         payment: 'Cashless',
+        serviceType: realOrder.serviceType || 'Food',
+        items: realOrder.items?.map(i => ({ name: i.name || '', quantity: i.quantity })) || [],
       }
     }
 
     const bySeed = orders.find(item => item.id === orderId)
 
     if (bySeed) {
+      const mockRecip = MOCK_RECIPIENTS[bySeed.client] || { name: 'Алия Сыздыкова', phone: bySeed.clientPhone || '+7 777 000 00 00' }
       return {
         id: bySeed.id,
         client: bySeed.client,
+        recipientName: mockRecip.name,
+        recipientPhone: mockRecip.phone,
         pickupAddress: bySeed.pickupAddress,
         deliveryAddress: bySeed.deliveryAddress,
         earnings: bySeed.earnings,
         distance: getString(dashboard?.incomingOrder.distance, '250m'),
         estimatedMin: getNumber(dashboard?.incomingOrder.estimatedMin, 12),
         pickupCode: getString(bySeed.pickupCode, getString(dashboard?.incomingOrder.pickupCode, '385987')),
-        clientPhone: getString(bySeed.clientPhone, getString(dashboard?.courier.phone, '+7 777 123 45 67')),
+        clientPhone: mockRecip.phone,
         comment: getString(bySeed.comment, 'Call 5 minutes before arrival'),
         parcelsCount: getNumber(bySeed.parcelsCount, getNumber(dashboard?.incomingOrder.parcelsCount, 1)),
         payment: normalizePayment(getString(bySeed.payment, getString(dashboard?.incomingOrder.payment, 'cashless'))),
+        serviceType: getString(bySeed.serviceType, 'Food'),
+        items: (CLIENT_MOCK_ITEMS[bySeed.client] || []).map(name => ({ name, quantity: 1 })),
       }
     }
 
@@ -215,21 +266,55 @@ export function OrderDetailScreen({ navigation, route }: Props) {
       return {
         id: dashboard.incomingOrder.id,
         client: dashboard.incomingOrder.client,
+        recipientName: MOCK_RECIPIENTS[dashboard.incomingOrder.client]?.name || 'Арман Исаев',
+        recipientPhone: MOCK_RECIPIENTS[dashboard.incomingOrder.client]?.phone || '+7 701 555 33 22',
         pickupAddress: dashboard.incomingOrder.pickupAddress,
         deliveryAddress: dashboard.incomingOrder.deliveryAddress,
         earnings: dashboard.incomingOrder.earnings,
         distance: getString(dashboard.incomingOrder.distance, '250m'),
         estimatedMin: getNumber(dashboard.incomingOrder.estimatedMin, 12),
         pickupCode: getString(dashboard.incomingOrder.pickupCode, '385987'),
-        clientPhone: getString(dashboard?.courier.phone, '+7 777 123 45 67'),
+        clientPhone: MOCK_RECIPIENTS[dashboard.incomingOrder.client]?.phone || '+7 701 555 33 22',
         comment: getString(dashboard.incomingOrder.comment, 'Call 5 minutes before arrival'),
         parcelsCount: getNumber(dashboard.incomingOrder.parcelsCount, 1),
         payment: normalizePayment(getString(dashboard.incomingOrder.payment, 'cashless')),
+        serviceType: getString(dashboard.incomingOrder.deliveryType || dashboard.incomingOrder.serviceType, 'Food'),
+        items: (CLIENT_MOCK_ITEMS[dashboard.incomingOrder.client] || []).map(name => ({ name, quantity: 1 })),
       }
     }
 
     return null
   }, [realOrder, dashboard, orderId, orders])
+
+  const isPickedUp = useMemo(() => {
+    if (realAssignment) {
+      return ['PICKED_UP', 'IN_TRANSIT', 'ARRIVED', 'DELIVERED'].includes(realAssignment.assignmentStatus)
+    }
+    return ['pickedUp', 'onWay', 'delivered'].includes(stage)
+  }, [realAssignment, stage])
+
+  const isDelivered = useMemo(() => {
+    if (realAssignment) {
+      return realAssignment.assignmentStatus === 'DELIVERED'
+    }
+    return stage === 'delivered'
+  }, [realAssignment, stage])
+
+  const deliveryAddressTitle = useMemo(() => {
+    if (realOrder?.deliveryAddress) {
+      return [realOrder.deliveryAddress.street, realOrder.deliveryAddress.house].filter(Boolean).join(' ').trim() || 'Delivery Address'
+    }
+    return order?.deliveryAddress || 'Delivery Address'
+  }, [realOrder, order])
+
+  const deliveryAddressDetails = useMemo(() => {
+    if (!realOrder?.deliveryAddress) return 'Entrance 2, floor 5'
+    const details = []
+    if (realOrder.deliveryAddress.entrance) details.push(`Entrance ${realOrder.deliveryAddress.entrance}`)
+    if (realOrder.deliveryAddress.floor) details.push(`floor ${realOrder.deliveryAddress.floor}`)
+    if (realOrder.deliveryAddress.apartment) details.push(`apt ${realOrder.deliveryAddress.apartment}`)
+    return details.join(', ') || 'No details'
+  }, [realOrder])
 
   const isActive = activeOrderId === orderId
   const actionLabel = ACTIVE_STAGE_ACTION_LABEL[stage]
@@ -319,7 +404,9 @@ export function OrderDetailScreen({ navigation, route }: Props) {
     const success = await resendDeliveryCode(assignmentId)
     setResending(false)
     if (success) {
-      Alert.alert('Успех', 'Код подтверждения был отправлен повторно!')
+      setCodeTimedOut(false)
+      setOtpCode('')
+      Alert.alert('Успех', 'Новый код подтверждения отправлен клиенту!')
     } else {
       Alert.alert('Ошибка', 'Не удалось отправить код повторно')
     }
@@ -336,10 +423,15 @@ export function OrderDetailScreen({ navigation, route }: Props) {
     if (success) {
       setIsOtpModalVisible(false)
       setOtpCode('')
+      setCodeTimedOut(false)
       Alert.alert('Успех', 'Заказ успешно доставлен и подтвержден!')
       navigation.goBack()
     } else {
-      Alert.alert('Ошибка подтверждения', deliveryCodeError || 'Неверный код')
+      const isExpired = (deliveryCodeError || '').toLowerCase().includes('expired')
+      if (isExpired) {
+        setCodeTimedOut(true)
+        setOtpCode('')
+      }
     }
   }
 
@@ -400,16 +492,28 @@ export function OrderDetailScreen({ navigation, route }: Props) {
       >
         <View style={styles.pickupHeaderCard}>
           <View style={styles.pickupHeaderTopRow}>
-            <View style={styles.pickupPill}>
-              <Text style={styles.pickupPillText}>PICKUP</Text>
+            <View style={[styles.pickupPill, isPickedUp && styles.deliveryPill]}>
+              <Text style={[styles.pickupPillText, isPickedUp && styles.deliveryPillText]}>
+                {isPickedUp ? 'DELIVERY' : 'PICKUP'}
+              </Text>
             </View>
-            <Text style={styles.pickupDistanceText}>250m away</Text>
+            <Text style={styles.pickupDistanceText}>
+              {isPickedUp ? 'Client Destination' : '250m away'}
+            </Text>
             <View style={styles.pickupStoreIconWrap}>
-              <Ionicons name="storefront-outline" size={16} color="#ff9069" />
+              <Ionicons
+                name={isPickedUp ? 'location-outline' : 'storefront-outline'}
+                size={16}
+                color="#ff9069"
+              />
             </View>
           </View>
-          <Text style={styles.pickupClient}>{order.client}</Text>
-          <Text style={styles.pickupAddress}>{order.pickupAddress}</Text>
+          <Text style={styles.pickupClient}>
+            {isPickedUp ? deliveryAddressTitle : 'KFC'}
+          </Text>
+          <Text style={styles.pickupAddress}>
+            {isPickedUp ? deliveryAddressDetails : order.pickupAddress}
+          </Text>
         </View>
 
         {realAssignment && (
@@ -440,7 +544,7 @@ export function OrderDetailScreen({ navigation, route }: Props) {
         <View style={styles.authRow}>
           <View style={styles.authCardPrimary}>
             <Text style={styles.authLabel}>ORDER AUTHENTICATION</Text>
-            <Text style={styles.authCode}>{order.pickupCode}</Text>
+            <Text style={styles.authCode}>{isDelivered ? order.pickupCode : '000000'}</Text>
             <Text style={styles.authCodeHint}>pickup code</Text>
             <Text style={styles.authOrderIdLabel}>Order ID</Text>
             <Text style={styles.authOrderId}>#{order.id}</Text>
@@ -461,54 +565,150 @@ export function OrderDetailScreen({ navigation, route }: Props) {
         </View>
 
         <View style={styles.sectionCard}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="fast-food-outline" size={18} color="#ff9069" />
+            <Text style={styles.sectionTitle}>Содержимое заказа</Text>
+          </View>
+          <View style={{ gap: 6, marginTop: 4 }}>
+            {order.items && order.items.length > 0 ? (
+              order.items.map((item, idx) => (
+                <Text key={idx} style={styles.sectionText}>
+                  • {item.name} ({item.quantity} шт.)
+                </Text>
+              ))
+            ) : (
+              <Text style={styles.sectionText}>📦 Стандартная посылка</Text>
+            )}
+          </View>
+        </View>
+
+        {/* Client Contacts Card */}
+        <View style={styles.sectionCard}>
           <View style={styles.courierTopRow}>
             <View style={styles.courierInfoWrap}>
               <View style={styles.courierAvatar}>
                 <Ionicons name="person" size={18} color="#f2f2f5" />
               </View>
               <View>
-                <Text style={styles.courierName}>{courierName}</Text>
-                <Text style={styles.courierPhone}>{order.clientPhone}</Text>
+                <Text style={styles.courierName}>{order.recipientName}</Text>
+                <Text style={styles.courierPhone}>{order.recipientPhone}</Text>
               </View>
             </View>
             <View style={styles.courierActions}>
-              <Pressable style={styles.courierActionBtn}>
+              <Pressable
+                style={styles.courierActionBtn}
+                onPress={() => Linking.openURL(`tel:${order.recipientPhone}`)}
+              >
                 <Ionicons name="call-outline" size={16} color="#ff9069" />
               </Pressable>
-              <Pressable style={styles.courierActionBtn}>
+              <Pressable
+                style={styles.courierActionBtn}
+                onPress={() => Linking.openURL(`sms:${order.recipientPhone}`)}
+              >
                 <Ionicons name="chatbox-outline" size={16} color="#ff9069" />
               </Pressable>
             </View>
           </View>
 
-          <View style={styles.routeRow}>
-            <View style={styles.routeAddressWrap}>
-              <Ionicons name="location-outline" size={17} color="#fc8f3c" />
-              <View>
-                <Text style={styles.routeAddressTitle}>{order.deliveryAddress}</Text>
-                <Text style={styles.routeAddressHint}>Entrance 2, floor 5</Text>
+          {/* If picked up, display routing actions and comment directly in the contacts card to save space */}
+          {isPickedUp && (
+            <View style={styles.routeActionsRow}>
+              <Pressable
+                style={styles.openRouteBtn}
+                onPress={() => navigation.navigate(ROOT_ROUTES.MAIN_TABS)}
+              >
+                <Ionicons name="map-outline" size={14} color="#fc8f3c" />
+                <Text style={styles.openRouteText}>On map</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.openRouteBtn}
+                onPress={() => {
+                  const url = Platform.select({
+                    ios: `maps:0,0?q=${order.deliveryAddress}`,
+                    android: `geo:0,0?q=${order.deliveryAddress}`,
+                  })
+                  if (url) {
+                    Linking.openURL(url).catch(() => {
+                      Alert.alert('Ошибка', 'Не удалось открыть карту')
+                    })
+                  }
+                }}
+              >
+                <Ionicons name="navigate-outline" size={14} color="#fc8f3c" />
+                <Text style={styles.openRouteText}>Open route</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {isPickedUp && order.comment ? (
+            <View style={[styles.noteBox, { marginTop: 12 }]}>
+              <Ionicons name="megaphone-outline" size={14} color="#fc8f3c" />
+              <Text style={styles.noteText}>"{order.comment}"</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Delivery Address Card (shown ONLY if NOT picked up yet) */}
+        {!isPickedUp && (
+          <View style={styles.sectionCard}>
+            <View style={styles.routeRow}>
+              <View style={styles.routeAddressWrap}>
+                <Ionicons name="location-outline" size={17} color="#fc8f3c" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.routeAddressTitle}>{order.deliveryAddress}</Text>
+                  <Text style={styles.routeAddressHint}>{deliveryAddressDetails}</Text>
+                </View>
               </View>
             </View>
-            <Pressable style={styles.openRouteBtn}>
-              <Ionicons name="navigate" size={12} color="#fc8f3c" />
-              <Text style={styles.openRouteText}>Open route</Text>
-            </Pressable>
-          </View>
 
-          <View style={styles.noteBox}>
-            <Ionicons name="megaphone-outline" size={14} color="#fc8f3c" />
-            <Text style={styles.noteText}>"Call 5 minutes before arrival"</Text>
+            <View style={styles.routeActionsRow}>
+              <Pressable
+                style={styles.openRouteBtn}
+                onPress={() => navigation.navigate(ROOT_ROUTES.MAIN_TABS)}
+              >
+                <Ionicons name="map-outline" size={14} color="#fc8f3c" />
+                <Text style={styles.openRouteText}>On map</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.openRouteBtn}
+                onPress={() => {
+                  const url = Platform.select({
+                    ios: `maps:0,0?q=${order.deliveryAddress}`,
+                    android: `geo:0,0?q=${order.deliveryAddress}`,
+                  })
+                  if (url) {
+                    Linking.openURL(url).catch(() => {
+                      Alert.alert('Ошибка', 'Не удалось открыть карту')
+                    })
+                  }
+                }}
+              >
+                <Ionicons name="navigate-outline" size={14} color="#fc8f3c" />
+                <Text style={styles.openRouteText}>Open route</Text>
+              </Pressable>
+            </View>
+
+            {order.comment ? (
+              <View style={styles.noteBox}>
+                <Ionicons name="megaphone-outline" size={14} color="#fc8f3c" />
+                <Text style={styles.noteText}>"{order.comment}"</Text>
+              </View>
+            ) : null}
           </View>
-        </View>
+        )}
 
         <View style={styles.metaRow}>
           <View style={styles.metaCard}>
-            <Text style={styles.metaLabel}>PACKAGE</Text>
+            <Text style={styles.metaLabel}>SERVICE TYPE</Text>
             <View style={styles.metaTitleRow}>
               <Ionicons name="cube-outline" size={16} color="#ff9069" />
-              <Text style={styles.metaTitle}>{order.parcelsCount} package</Text>
+              <Text style={styles.metaTitle}>{order.serviceType}</Text>
             </View>
-            <Text style={styles.metaHint}>Standard Parcel · under 5kg</Text>
+            <Text style={styles.metaHint}>
+              {order.serviceType.toLowerCase() === 'food' ? 'Food & Drinks Delivery' : 'Standard Delivery'}
+            </Text>
           </View>
 
           <View style={styles.metaCard}>
@@ -536,10 +736,12 @@ export function OrderDetailScreen({ navigation, route }: Props) {
           </Pressable>
         </View>
 
-        <Pressable style={styles.cancelBtn} onPress={() => void cancelActiveOrder()}>
-          <Ionicons name="close-circle-outline" size={18} color="#ff716c" />
-          <Text style={styles.cancelBtnText}>Cancel order</Text>
-        </Pressable>
+        {!isPickedUp && (
+          <Pressable style={styles.cancelBtn} onPress={() => void cancelActiveOrder()}>
+            <Ionicons name="close-circle-outline" size={18} color="#ff716c" />
+            <Text style={styles.cancelBtnText}>Cancel order</Text>
+          </Pressable>
+        )}
       </ScrollView>
 
       <View style={[styles.bottomActionWrap, { paddingBottom: insets.bottom + 8 }]}>
@@ -623,31 +825,46 @@ export function OrderDetailScreen({ navigation, route }: Props) {
             <Text style={styles.modalText}>
               Пожалуйста, попросите у клиента 6-значный код подтверждения и введите его ниже для завершения доставки.
             </Text>
-            
+
+            {codeTimedOut && (
+              <View style={styles.codeExpiredBanner}>
+                <Ionicons name="time-outline" size={16} color="#f59e0b" />
+                <Text style={styles.codeExpiredBannerText}>
+                  Код устарел. Нажмите «Отправить повторно» — клиент получит новый код.
+                </Text>
+              </View>
+            )}
+
             <TextInput
-              style={styles.otpInput}
+              style={[styles.otpInput, codeTimedOut && styles.otpInputExpired]}
               placeholder="000000"
               placeholderTextColor="#6f7485"
               keyboardType="number-pad"
               maxLength={6}
               value={otpCode}
-              onChangeText={setOtpCode}
+              onChangeText={text => { setOtpCode(text); if (codeTimedOut) setCodeTimedOut(false) }}
               editable={!(verifyingDeliveryCodeAssignmentId === assignmentId) && !resending}
             />
 
-            {deliveryCodeError && (
+            {deliveryCodeError && !codeTimedOut && (
               <Text style={styles.modalErrorText}>{deliveryCodeError}</Text>
             )}
 
-            <Pressable 
-              style={[styles.resendContainer, (resending || verifyingDeliveryCodeAssignmentId === assignmentId) && styles.disabledBtn]} 
+            <Pressable
+              style={[
+                styles.resendContainer,
+                codeTimedOut && styles.resendContainerHighlighted,
+                (resending || verifyingDeliveryCodeAssignmentId === assignmentId) && styles.disabledBtn,
+              ]}
               onPress={handleResendOTP}
               disabled={resending || verifyingDeliveryCodeAssignmentId === assignmentId}
             >
               {resending ? (
                 <ActivityIndicator size="small" color="#ff9069" />
               ) : (
-                <Text style={styles.resendText}>Не пришел код? Отправить повторно</Text>
+                <Text style={[styles.resendText, codeTimedOut && styles.resendTextHighlighted]}>
+                  {codeTimedOut ? 'Отправить новый код клиенту' : 'Не пришел код? Отправить повторно'}
+                </Text>
               )}
             </Pressable>
 
@@ -657,6 +874,7 @@ export function OrderDetailScreen({ navigation, route }: Props) {
                 onPress={() => {
                   setIsOtpModalVisible(false)
                   setOtpCode('')
+                  setCodeTimedOut(false)
                 }}
                 disabled={verifyingDeliveryCodeAssignmentId === assignmentId || resending}
               >
@@ -1299,10 +1517,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  resendContainerHighlighted: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 144, 105, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 144, 105, 0.4)',
+  },
   resendText: {
     color: '#ff9069',
     fontSize: 13,
     fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  resendTextHighlighted: {
+    textDecorationLine: 'none',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  codeExpiredBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  codeExpiredBannerText: {
+    color: '#f59e0b',
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+    lineHeight: 16,
+  },
+  otpInputExpired: {
+    borderColor: 'rgba(245, 158, 11, 0.6)',
+    color: '#6f7485',
+  },
+  deliveryPill: {
+    backgroundColor: 'rgba(52, 211, 153, 0.2)',
+  },
+  deliveryPillText: {
+    color: '#34d399',
+  },
+  routeActionsRow: {
+    flexDirection: 'row',
+    marginTop: 12,
+    gap: 10,
+    justifyContent: 'flex-start',
   },
 })

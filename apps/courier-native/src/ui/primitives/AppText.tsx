@@ -1,5 +1,5 @@
 import type { PropsWithChildren } from 'react'
-import { Text, StyleSheet, type TextStyle } from 'react-native'
+import { Text, StyleSheet, type TextStyle, type StyleProp } from 'react-native'
 import { appTheme } from '../../theme/appTheme'
 
 type AppTextVariant = 'title' | 'subtitle' | 'body' | 'label' | 'button'
@@ -7,7 +7,7 @@ type AppTextVariant = 'title' | 'subtitle' | 'body' | 'label' | 'button'
 type Props = PropsWithChildren<{
   variant?: AppTextVariant
   color?: string
-  style?: TextStyle
+  style?: StyleProp<TextStyle>
 }>
 
 export function AppText({ children, variant = 'body', color, style }: Props) {

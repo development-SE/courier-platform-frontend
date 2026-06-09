@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
+import * as Notifications from 'expo-notifications'
 import { fetchDashboardSnapshotFromCore } from '../../data/coreClient'
 import { STAGE_META, useShiftStore } from '../../store/shiftStore'
 import { useAuthStore } from '../../store/authStore'
@@ -11,11 +12,24 @@ import {
   type OrderResponse,
 } from '../../data/logisticsApi'
 import { getCurrentLocation } from '../../platform/location'
+import { apiRequest } from '../../data/apiClient'
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+})
 
 type ActiveOrderCard = {
   id: string
   orderId: string
   client: string
+  clientPhone?: string
+  serviceType?: string
   pickupAddress: string
   deliveryAddress: string
   earnings: number
@@ -25,6 +39,161 @@ type ActiveOrderCard = {
   comment?: string
   parcelsCount?: number
   payment?: string
+  pickupCoordinates?: { latitude: number; longitude: number } | null
+  deliveryCoordinates?: { latitude: number; longitude: number } | null
+}
+
+function decodePolyline(str: string, origin?: { latitude: number; longitude: number } | null) {
+  const decoded5 = decodePolylineWithPrecision(str, 5)
+  if (!origin || decoded5.length === 0) {
+    return decoded5
+  }
+
+  const first5 = decoded5[0]
+  const dist5 = Math.abs(first5.latitude - origin.latitude) + Math.abs(first5.longitude - origin.longitude)
+
+  const decoded6 = decodePolylineWithPrecision(str, 6)
+  const first6 = decoded6[0]
+  const dist6 = Math.abs(first6.latitude - origin.latitude) + Math.abs(first6.longitude - origin.longitude)
+
+  return dist6 < dist5 ? decoded6 : decoded5
+}
+
+function decodePolylineWithPrecision(str: string, precision: number) {
+  let index = 0,
+    lat = 0,
+    lng = 0,
+    coordinates = [],
+    shift = 0,
+    result = 0,
+    byte = null,
+    latitude_change,
+    longitude_change,
+    factor = Math.pow(10, precision);
+
+  while (index < str.length) {
+    byte = null;
+    shift = 0;
+    result = 0;
+
+    do {
+      byte = str.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+
+    latitude_change = ((result & 1) ? ~(result >> 1) : (result >> 1));
+
+    shift = 0;
+    result = 0;
+
+    do {
+      byte = str.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+
+    longitude_change = ((result & 1) ? ~(result >> 1) : (result >> 1));
+
+    lat += latitude_change;
+    lng += longitude_change;
+
+    coordinates.push({
+      latitude: lat / factor,
+      longitude: lng / factor
+    });
+  }
+
+  return coordinates;
+}
+
+async function fetchRouteCoordinates(
+  origin: { latitude: number; longitude: number } | null,
+  destination: { latitude: number; longitude: number } | null,
+  accessToken?: string | null,
+) {
+  if (!origin || !destination) {
+    return []
+  }
+
+  // 1. Try backend (Google Maps / premium route calculate) first
+  if (accessToken) {
+    try {
+      const res = await apiRequest<{ encodedPolyline: string }>('/api/routes/calculate', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        json: {
+          origin: { lat: origin.latitude, lng: origin.longitude },
+          destination: { lat: destination.latitude, lng: destination.longitude },
+        },
+      })
+
+      if (res.ok && res.data?.encodedPolyline) {
+        const decoded = decodePolyline(res.data.encodedPolyline, origin)
+        if (decoded.length > 3) {
+          return decoded
+        }
+      }
+    } catch (err) {
+      console.log('Failed to fetch premium route from backend:', err)
+    }
+  }
+
+  // 2. Fall back to OSRM (free, no API key)
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`
+    const response = await fetch(url)
+
+    if (!response.ok) {
+      throw new Error(`OSRM request failed with status ${response.status}`)
+    }
+
+    const data = await response.json()
+    const osrmCoordinates = data?.routes?.[0]?.geometry?.coordinates
+
+    if (Array.isArray(osrmCoordinates)) {
+      const coords = osrmCoordinates
+        .filter((point: unknown) => Array.isArray(point) && point.length >= 2)
+        .map((point: unknown) => {
+          const [longitude, latitude] = point as [number, number]
+          return { latitude, longitude }
+        })
+      if (coords.length > 1) {
+        return coords
+      }
+    }
+  } catch {
+    // Fall back to straight line when routing is unavailable.
+  }
+
+  return [origin, destination]
+}
+
+function formatAddress(addr: any) {
+  if (!addr) return ''
+  let parts = []
+  if (addr.street) {
+    parts.push(addr.street)
+  }
+  if (addr.house) {
+    parts.push(addr.house)
+  }
+  let details = []
+  if (addr.entrance) {
+    details.push(`п. ${addr.entrance}`)
+  }
+  if (addr.floor) {
+    details.push(`${addr.floor} эт.`)
+  }
+  if (addr.apartment) {
+    details.push(`кв. ${addr.apartment}`)
+  }
+  if (details.length > 0) {
+    return `${parts.join(', ')} (${details.join(', ')})`
+  }
+  return parts.join(', ')
 }
 
 export function useDashboardModel() {
@@ -35,6 +204,7 @@ export function useDashboardModel() {
 
   const accessToken = useAuthStore(state => state.accessToken)
   const courierId = useAuthStore(state => state.courierId)
+  const courierProfile = useAuthStore(state => state.courierProfile)
 
   const {
     status,
@@ -109,6 +279,43 @@ export function useDashboardModel() {
     longitude: 71.4304,
   })
 
+  // Request notification permissions
+  useEffect(() => {
+    const requestPermissions = async () => {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync()
+      let finalStatus = existingStatus
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync()
+        finalStatus = status
+      }
+      if (finalStatus !== 'granted') {
+        console.warn('Notification permissions not granted')
+      }
+    }
+    void requestPermissions()
+  }, [])
+
+  const prevIncomingIdRef = useRef<string | null>(null)
+
+  // Trigger local notification when a new order is assigned
+  useEffect(() => {
+    if (realIncoming?.id) {
+      if (realIncoming.id !== prevIncomingIdRef.current) {
+        prevIncomingIdRef.current = realIncoming.id
+        void Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Новый заказ!',
+            body: `Клиент: ${realIncoming.client}. Доставка: ${realIncoming.deliveryAddress}`,
+            data: { orderId: realIncoming.orderId, assignmentId: realIncoming.id },
+          },
+          trigger: null,
+        })
+      }
+    } else {
+      prevIncomingIdRef.current = null
+    }
+  }, [realIncoming])
+
   // Poll for incoming orders when online
   useEffect(() => {
     if (!accessToken || !courierId || status !== 'online') {
@@ -120,7 +327,8 @@ export function useDashboardModel() {
     let isMounted = true
     const checkIncoming = async () => {
       try {
-        const res = await listMyAssignments(accessToken, courierId, 'ASSIGNED')
+        const pollStatus = courierProfile?.courierType === 'CONTRACTOR' ? 'PENDING' : 'ASSIGNED'
+        const res = await listMyAssignments(accessToken, courierId, pollStatus)
         if (!isMounted) return
 
         if (res.ok && res.data?.success && res.data?.data?.content && res.data.data.content.length > 0) {
@@ -136,9 +344,9 @@ export function useDashboardModel() {
               id: firstAssign.id, // assignmentId
               orderId: firstAssign.orderId,
               client: orderData.recipientInfo?.name || 'Customer',
-              pickupAddress: orderData.pickupAddress?.street || 'Astana Store',
-              deliveryAddress: orderData.deliveryAddress?.street || 'Delivery Address',
-              earnings: 1200,
+              pickupAddress: formatAddress(orderData.pickupAddress) || 'Astana Store',
+              deliveryAddress: formatAddress(orderData.deliveryAddress) || 'Delivery Address',
+              earnings: orderData.totalAmount || 1200,
               distance: '2.4 km',
               estimatedMin: 15,
               pickupCode: orderData.deliveryConfirmationCode || '',
@@ -164,7 +372,7 @@ export function useDashboardModel() {
       isMounted = false
       clearInterval(timer)
     }
-  }, [accessToken, courierId, status, setShowIncoming])
+  }, [accessToken, courierId, status, courierProfile?.courierType, setShowIncoming])
 
   // Poll active order details when busy
   useEffect(() => {
@@ -266,15 +474,23 @@ export function useDashboardModel() {
       id: activeAssignmentId || activeOrderId,
       orderId: activeOrderId,
       client: activeOrderDetails.recipientInfo?.name || 'Customer',
-      pickupAddress: activeOrderDetails.pickupAddress?.street || 'Restaurant Address',
-      deliveryAddress: activeOrderDetails.deliveryAddress?.street || 'Delivery Address',
-      earnings: 1200,
+      clientPhone: activeOrderDetails.recipientInfo?.phone || '',
+      serviceType: activeOrderDetails.serviceType || 'Standard',
+      pickupAddress: formatAddress(activeOrderDetails.pickupAddress) || 'Restaurant Address',
+      deliveryAddress: formatAddress(activeOrderDetails.deliveryAddress) || 'Delivery Address',
+      earnings: activeOrderDetails.totalAmount || 1200,
       distance: '2.4 km',
       estimatedMin: 15,
       pickupCode: activeOrderDetails.deliveryConfirmationCode || '',
       comment: activeOrderDetails.comment || '',
       parcelsCount: 1,
       payment: 'Cashless',
+      pickupCoordinates: activeOrderDetails.pickupAddress?.latitude && activeOrderDetails.pickupAddress?.longitude
+        ? { latitude: Number(activeOrderDetails.pickupAddress.latitude), longitude: Number(activeOrderDetails.pickupAddress.longitude) }
+        : null,
+      deliveryCoordinates: activeOrderDetails.deliveryAddress?.latitude && activeOrderDetails.deliveryAddress?.longitude
+        ? { latitude: Number(activeOrderDetails.deliveryAddress.latitude), longitude: Number(activeOrderDetails.deliveryAddress.longitude) }
+        : null,
     }
   }, [activeOrderId, activeAssignmentId, activeOrderDetails])
 
@@ -323,6 +539,43 @@ export function useDashboardModel() {
     setShowIncoming(false)
   }
 
+  const [routeCoords, setRouteCoords] = useState<Array<{ latitude: number; longitude: number }>>([])
+
+  // Dynamic Route calculation
+  useEffect(() => {
+    if (!activeOrder) {
+      setRouteCoords([])
+      return
+    }
+
+    const courierLoc = lastKnownLocation ?? gpsLocation
+    if (!courierLoc) return
+
+    let destination = activeOrder.pickupCoordinates
+    if (stage === 'onWay' || stage === 'delivered') {
+      destination = activeOrder.deliveryCoordinates
+    }
+
+    if (!destination) {
+      setRouteCoords([])
+      return
+    }
+
+    let isMounted = true
+    const calculate = async () => {
+      const coords = await fetchRouteCoordinates(courierLoc, destination, accessToken)
+      if (isMounted) {
+        setRouteCoords(coords)
+      }
+    }
+
+    void calculate()
+
+    return () => {
+      isMounted = false
+    }
+  }, [activeOrder, lastKnownLocation, gpsLocation, stage, accessToken])
+
   return {
     isLoading,
     courier: data?.courier ?? null,
@@ -341,6 +594,7 @@ export function useDashboardModel() {
     advanceStage,
     cancelActiveOrder,
     verifyOTP,
+    routeCoords,
 
     isOnline,
     lastKnownLocation,

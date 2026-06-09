@@ -67,3 +67,11 @@ export function deleteAddress(accessToken: string, id: string) {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 }
+
+export function setDefaultAddress(accessToken: string, id: string) {
+  return apiRequest<AddressResponse>(`/api/v1/users/me/addresses/${id}/default`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}
+

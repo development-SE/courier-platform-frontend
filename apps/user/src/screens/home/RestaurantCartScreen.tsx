@@ -21,7 +21,9 @@ type RestaurantCartScreenProps = {
   onClearCart?: () => void
   onDecreaseItem?: (itemId: string) => void
   onIncreaseItem?: (itemId: string) => void
-  onCheckout?: () => void
+  onCheckout?: (serviceType: 'STANDARD' | 'SCHEDULED' | 'EXPRESS', scheduleTime?: string) => void
+  deliveryAddress?: string
+  onAddressEditPress?: () => void
 }
 
 type PaymentMethod = 'cash' | 'card' | 'digital'
@@ -34,6 +36,9 @@ type SavedCard = {
 
 const deliveryFee = 2
 const discount = 4
+
+const dateSlots = ['Today', 'Tomorrow', 'Wed, 10.06', 'Thu, 11.06', 'Fri, 12.06', 'Sat, 13.06']
+const timeSlots = ['19:00', '19:30', '20:00', '20:30', '21:00', '21:30', '21:55', '22:00', '22:05', '22:30', '23:00']
 
 const savedCards: SavedCard[] = [
   {
@@ -97,6 +102,8 @@ export function RestaurantCartScreen({
   onDecreaseItem,
   onIncreaseItem,
   onCheckout,
+  deliveryAddress,
+  onAddressEditPress,
 }: RestaurantCartScreenProps) {
   const insets = useSafeAreaInsets()
   const [isPaymentModalVisible, setPaymentModalVisible] = useState(false)
@@ -104,6 +111,38 @@ export function RestaurantCartScreen({
   const [draftMethod, setDraftMethod] = useState<PaymentMethod>('card')
   const [confirmedCardId, setConfirmedCardId] = useState(savedCards[0].id)
   const [draftCardId, setDraftCardId] = useState(savedCards[0].id)
+  const [serviceType, setServiceType] = useState<'STANDARD' | 'SCHEDULED' | 'EXPRESS'>('STANDARD')
+
+  const [isScheduleModalVisible, setScheduleModalVisible] = useState(false)
+  const [selectedDate, setSelectedDate] = useState('Today')
+  const [selectedTime, setSelectedTime] = useState('21:55')
+  const [tempDate, setTempDate] = useState('Today')
+  const [tempTime, setTempTime] = useState('21:55')
+
+  const openScheduleModal = () => {
+    setTempDate(selectedDate)
+    setTempTime(selectedTime)
+    setScheduleModalVisible(true)
+  }
+
+  const closeScheduleModal = () => {
+    setScheduleModalVisible(false)
+  }
+
+  const confirmSchedule = () => {
+    setSelectedDate(tempDate)
+    setSelectedTime(tempTime)
+    setServiceType('SCHEDULED')
+    setScheduleModalVisible(false)
+  }
+
+  const activeDeliveryFee = useMemo(() => {
+    return serviceType === 'EXPRESS' ? 3.5 : serviceType === 'SCHEDULED' ? 1.5 : 2.0
+  }, [serviceType])
+
+  const activeTotal = useMemo(() => {
+    return Math.max(0, subtotal + activeDeliveryFee - discount)
+  }, [subtotal, activeDeliveryFee])
 
   const confirmedCard = useMemo(
     () => savedCards.find(card => card.id === confirmedCardId) ?? savedCards[0],
@@ -220,18 +259,126 @@ export function RestaurantCartScreen({
         </View>
 
         <View style={styles.detailsSection}>
+          <View style={styles.serviceCard}>
+            <Text allowFontScaling={false} style={styles.infoLabel}>
+              DELIVERY SERVICE TYPE
+            </Text>
+            <View style={styles.serviceOptionsRow}>
+              <Pressable
+                onPress={() => setServiceType('STANDARD')}
+                style={[
+                  styles.serviceOption,
+                  serviceType === 'STANDARD' && styles.serviceOptionActive,
+                ]}
+              >
+                <Feather
+                  name="truck"
+                  size={16}
+                  color={serviceType === 'STANDARD' ? '#ff7a59' : '#191c1e'}
+                />
+                <Text
+                  allowFontScaling={false}
+                  style={[
+                    styles.serviceOptionText,
+                    serviceType === 'STANDARD' && styles.serviceOptionTextActive,
+                  ]}
+                >
+                  Standard
+                </Text>
+                <Text
+                  allowFontScaling={false}
+                  style={[
+                    styles.serviceOptionPrice,
+                    serviceType === 'STANDARD' && styles.serviceOptionPriceActive,
+                  ]}
+                >
+                  $2.00
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setServiceType('EXPRESS')}
+                style={[
+                  styles.serviceOption,
+                  serviceType === 'EXPRESS' && styles.serviceOptionActive,
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name="lightning-bolt"
+                  size={18}
+                  color={serviceType === 'EXPRESS' ? '#ff7a59' : '#191c1e'}
+                />
+                <Text
+                  allowFontScaling={false}
+                  style={[
+                    styles.serviceOptionText,
+                    serviceType === 'EXPRESS' && styles.serviceOptionTextActive,
+                  ]}
+                >
+                  Express
+                </Text>
+                <Text
+                  allowFontScaling={false}
+                  style={[
+                    styles.serviceOptionPrice,
+                    serviceType === 'EXPRESS' && styles.serviceOptionPriceActive,
+                  ]}
+                >
+                  $3.50
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={openScheduleModal}
+                style={[
+                  styles.serviceOption,
+                  serviceType === 'SCHEDULED' && styles.serviceOptionActive,
+                ]}
+              >
+                <Feather
+                  name="calendar"
+                  size={16}
+                  color={serviceType === 'SCHEDULED' ? '#ff7a59' : '#191c1e'}
+                />
+                <Text
+                  allowFontScaling={false}
+                  style={[
+                    styles.serviceOptionText,
+                    serviceType === 'SCHEDULED' && styles.serviceOptionTextActive,
+                  ]}
+                >
+                  Scheduled
+                </Text>
+                <Text
+                  allowFontScaling={false}
+                  style={[
+                    styles.serviceOptionPrice,
+                    serviceType === 'SCHEDULED' && styles.serviceOptionPriceActive,
+                  ]}
+                >
+                  $1.50
+                </Text>
+              </Pressable>
+            </View>
+            <Text allowFontScaling={false} style={styles.serviceDescText}>
+              {serviceType === 'STANDARD' && 'Standard delivery arrives in 25-35 mins.'}
+              {serviceType === 'EXPRESS' && 'Priority express delivery arrives in 10-15 mins.'}
+              {serviceType === 'SCHEDULED' && `Scheduled for ${selectedDate} at ${selectedTime}.`}
+            </Text>
+          </View>
+
           <View style={styles.addressCard}>
             <View style={styles.addressTopRow}>
-              <View>
+              <Pressable style={{ flex: 1 }} onPress={onAddressEditPress}>
                 <Text allowFontScaling={false} style={styles.infoLabel}>
                   DELIVERY ADDRESS
                 </Text>
                 <Text allowFontScaling={false} style={styles.infoValue}>
-                  1248 Magnolia Way
+                  {deliveryAddress ?? 'Select address'}
                 </Text>
-              </View>
+              </Pressable>
 
-              <Pressable style={styles.iconBubble}>
+              <Pressable style={styles.iconBubble} onPress={onAddressEditPress}>
                 <Feather name="edit-3" size={12} color="#191c1e" />
               </Pressable>
             </View>
@@ -239,7 +386,9 @@ export function RestaurantCartScreen({
             <View style={styles.arrivalRow}>
               <Ionicons name="time-outline" size={12} color="#446744" />
               <Text allowFontScaling={false} style={styles.arrivalText}>
-                Arrives in 25-35 mins
+                {serviceType === 'EXPRESS' && 'Arrives in 10-15 mins'}
+                {serviceType === 'STANDARD' && 'Arrives in 25-35 mins'}
+                {serviceType === 'SCHEDULED' && `Arrives ${selectedDate.toLowerCase()} at ${selectedTime}`}
               </Text>
             </View>
           </View>
@@ -301,7 +450,7 @@ export function RestaurantCartScreen({
               Delivery fee
             </Text>
             <Text allowFontScaling={false} style={styles.summaryValue}>
-              ${deliveryFee.toFixed(2)}
+              ${activeDeliveryFee.toFixed(2)}
             </Text>
           </View>
 
@@ -321,14 +470,14 @@ export function RestaurantCartScreen({
               Total
             </Text>
             <Text allowFontScaling={false} style={styles.totalValue}>
-              ${total.toFixed(2)}
+              ${activeTotal.toFixed(2)}
             </Text>
           </View>
         </View>
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-        <Pressable onPress={onCheckout} style={styles.checkoutButton}>
+        <Pressable onPress={() => onCheckout?.(serviceType, serviceType === 'SCHEDULED' ? `${selectedDate} at ${selectedTime}` : undefined)} style={styles.checkoutButton}>
           <Text allowFontScaling={false} style={styles.checkoutButtonText}>
             Proceed to Checkout
           </Text>
@@ -457,6 +606,97 @@ export function RestaurantCartScreen({
               <Pressable onPress={confirmPaymentSelection} style={styles.modalConfirmButton}>
                 <Text allowFontScaling={false} style={styles.modalConfirmText}>
                   Confirm Selection
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        transparent
+        animationType="slide"
+        visible={isScheduleModalVisible}
+        onRequestClose={closeScheduleModal}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalBackdrop} onPress={closeScheduleModal} />
+
+          <View style={[styles.modalSheet, { minHeight: 450, paddingBottom: Math.max(insets.bottom, 20) }]}>
+            <View style={styles.modalHandle} />
+
+            <View style={styles.modalHeader}>
+              <Text allowFontScaling={false} style={styles.modalTitle}>
+                Schedule delivery
+              </Text>
+
+              <Pressable onPress={closeScheduleModal} style={styles.modalCloseButton}>
+                <Feather name="x" size={18} color="#58423c" />
+              </Pressable>
+            </View>
+
+            <View style={styles.scheduleColumnsContainer}>
+              <ScrollView style={styles.scheduleColumn} showsVerticalScrollIndicator={false}>
+                <View style={styles.columnInner}>
+                  {dateSlots.map(date => {
+                    const isSelected = tempDate === date
+                    return (
+                      <Pressable
+                        key={date}
+                        onPress={() => setTempDate(date)}
+                        style={[
+                          styles.scheduleSlotItem,
+                          isSelected && styles.scheduleSlotItemActive,
+                        ]}
+                      >
+                        <Text
+                          allowFontScaling={false}
+                          style={[
+                            styles.scheduleSlotText,
+                            isSelected && styles.scheduleSlotTextActive,
+                          ]}
+                        >
+                          {date}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              </ScrollView>
+
+              <ScrollView style={styles.scheduleColumn} showsVerticalScrollIndicator={false}>
+                <View style={styles.columnInner}>
+                  {timeSlots.map(time => {
+                    const isSelected = tempTime === time
+                    return (
+                      <Pressable
+                        key={time}
+                        onPress={() => setTempTime(time)}
+                        style={[
+                          styles.scheduleSlotItem,
+                          isSelected && styles.scheduleSlotItemActive,
+                        ]}
+                      >
+                        <Text
+                          allowFontScaling={false}
+                          style={[
+                            styles.scheduleSlotText,
+                            isSelected && styles.scheduleSlotTextActive,
+                          ]}
+                        >
+                          {time}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              </ScrollView>
+            </View>
+
+            <View style={styles.modalFooter}>
+              <Pressable onPress={confirmSchedule} style={styles.modalConfirmButton}>
+                <Text allowFontScaling={false} style={styles.modalConfirmText}>
+                  Confirm
                 </Text>
               </Pressable>
             </View>
@@ -1016,6 +1256,96 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 18,
     lineHeight: 28,
+    fontWeight: '700',
+  },
+  serviceCard: {
+    padding: 24,
+    borderRadius: 32,
+    backgroundColor: '#f2f4f6',
+    gap: 16,
+  },
+  serviceOptionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  serviceOption: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#ffffff',
+  },
+  serviceOptionActive: {
+    backgroundColor: 'rgba(255, 122, 89, 0.08)',
+    borderColor: '#ff7a59',
+  },
+  serviceOptionText: {
+    color: '#191c1e',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  serviceOptionTextActive: {
+    color: '#ff7a59',
+  },
+  serviceOptionPrice: {
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'center',
+    color: 'rgba(25, 28, 30, 0.6)',
+  },
+  serviceOptionPriceActive: {
+    color: '#ff7a59',
+  },
+  serviceDescText: {
+    color: 'rgba(25, 28, 30, 0.6)',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  scheduleColumnsContainer: {
+    flexDirection: 'row',
+    height: 220,
+    gap: 16,
+    marginVertical: 16,
+  },
+  scheduleColumn: {
+    flex: 1,
+    backgroundColor: '#f2f4f6',
+    borderRadius: 24,
+    padding: 8,
+  },
+  columnInner: {
+    paddingBottom: 16,
+  },
+  scheduleSlotItem: {
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    marginVertical: 4,
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  scheduleSlotItemActive: {
+    backgroundColor: 'rgba(255, 122, 89, 0.08)',
+    borderColor: '#ff7a59',
+  },
+  scheduleSlotText: {
+    color: '#191c1e',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  scheduleSlotTextActive: {
+    color: '#ff7a59',
     fontWeight: '700',
   },
 })

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   Keyboard,
   Platform,
   Pressable,
@@ -14,7 +15,8 @@ import { Feather, FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/v
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps'
 import * as Location from 'expo-location'
-import { createAddress, listAddresses, updateAddress, type AddressResponse } from '../../data/addressesApi'
+import { createAddress, listAddresses, updateAddress, setDefaultAddress, type AddressResponse } from '../../data/addressesApi'
+import { googlePlacesAutocomplete, googlePlaceDetails, googleReverseGeocode } from '../../data/googleMapsApi'
 
 type UserAddressScreenProps = {
   accessToken: string
@@ -64,7 +66,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
   const [streetAddress, setStreetAddress] = useState('')
   const [city, setCity] = useState('Astana')
   const [entrance, setEntrance] = useState('')
-  const [floor, setFloor] = useState('')
+  const [house, setHouse] = useState('')
   const [door, setDoor] = useState('')
   const [buildingName, setBuildingName] = useState('')
   const [courierNotes, setCourierNotes] = useState('')
@@ -85,23 +87,23 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
   const [isAddingFromMap, setIsAddingFromMap] = useState(false)
   const mapRef = useRef<MapView | null>(null)
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const ignoreNextRegionChange = useRef(false)
 
   const onRegionChangeComplete = async (newRegion: any) => {
     setRegion(newRegion)
     setHasInteracted(true)
+    if (ignoreNextRegionChange.current) {
+      ignoreNextRegionChange.current = false
+      return
+    }
     try {
-      let geocode = await Location.reverseGeocodeAsync({
-        latitude: newRegion.latitude,
-        longitude: newRegion.longitude,
-      })
-      if (geocode.length > 0) {
-        const first = geocode[0]
-        const street = [first.street, first.streetNumber].filter(Boolean).join(' ')
-        if (street) {
-          setStreetAddress(street)
+      const result = await googleReverseGeocode(newRegion.latitude, newRegion.longitude)
+      if (result) {
+        if (result.street) {
+          setStreetAddress(result.street)
         }
-        if (first.city) {
-          setCity(first.city)
+        if (result.city) {
+          setCity(result.city)
         }
       }
     } catch (e) {
@@ -137,92 +139,46 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
     // Instantly set searching indicator for immediate UX feedback
     setSearching(true)
 
-    // Use Photon API (Komoot) which has no strict rate-limiting blocks and is extremely fast!
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        const response = await fetch(
-          `https://photon.komoot.io/api/?q=${encodeURIComponent(text)}&limit=5&countrycode=kz&bbox=71.21,50.85,71.79,51.36`,
-          {
-            headers: {
-              'User-Agent': 'SwiftDeliver-UserApp/1.0',
-            },
-          }
-        )
-        const data = await response.json()
-        if (data && data.features) {
-          const mapped = data.features
-            .map((feature: any) => {
-              const props = feature.properties
-              const name = props.name || ''
-              const houseNumber = props.housenumber || ''
-              const streetPart = houseNumber ? `${name}, ${houseNumber}` : name
-              const cityPart = props.city || props.town || props.village || ''
-              const districtPart = props.district || ''
-              
-              const displayParts = [
-                streetPart,
-                districtPart,
-                cityPart,
-                props.state || '',
-                props.country || ''
-              ].filter(Boolean)
-              
-              return {
-                lat: feature.geometry.coordinates[1].toString(),
-                lon: feature.geometry.coordinates[0].toString(),
-                display_name: displayParts.join(', ')
-              }
-            })
-            .filter((item: any) => {
-              const lower = item.display_name.toLowerCase()
-              return (
-                lower.includes('астана') ||
-                lower.includes('astana') ||
-                lower.includes('нур-султан') ||
-                lower.includes('nursultan')
-              )
-            })
-          setSuggestions(mapped)
-        } else {
-          setSuggestions([])
-        }
+        const results = await googlePlacesAutocomplete(text)
+        setSuggestions(results)
       } catch (e) {
-        console.log('Photon search error, trying Nominatim fallback:', e)
-        // Fallback to OSM Nominatim if Photon is ever down
-        try {
-          const response = await fetch(
-            `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
-              text
-            )}&format=json&limit=5&countrycodes=kz&accept-language=ru&viewbox=71.21,50.85,71.79,51.36&bounded=1`,
-            {
-              headers: {
-                'User-Agent': 'SwiftDeliver-UserApp/1.0',
-              },
-            }
-          )
-          const data = await response.json()
-          const filtered = (data || []).filter((item: any) => {
-            const lower = (item.display_name || '').toLowerCase()
-            return (
-              lower.includes('астана') ||
-              lower.includes('astana') ||
-              lower.includes('нур-султан') ||
-              lower.includes('nursultan')
-            )
-          })
-          setSuggestions(filtered)
-        } catch (err) {
-          console.log('Nominatim fallback error:', err)
-        }
+        console.log('Google Places Autocomplete search error:', e)
+        setSuggestions([])
       } finally {
         setSearching(false)
       }
     }, 500)
   }
 
-  const handleSelectSuggestion = (item: any) => {
-    const lat = parseFloat(item.lat)
-    const lon = parseFloat(item.lon)
+  const handleSelectSuggestion = async (item: any) => {
+    let lat = 0
+    let lon = 0
+
+    if (item.place_id) {
+      setSearching(true)
+      try {
+        const coords = await googlePlaceDetails(item.place_id)
+        if (coords) {
+          lat = coords.latitude
+          lon = coords.longitude
+        }
+      } catch (e) {
+        console.log('Error resolving place details:', e)
+      } finally {
+        setSearching(false)
+      }
+    } else {
+      lat = parseFloat(item.lat)
+      lon = parseFloat(item.lon)
+    }
+
+    if (!lat || !lon) {
+      Alert.alert('Ошибка', 'Не удалось получить координаты выбранного адреса.')
+      return
+    }
+
     const newRegion = {
       latitude: lat,
       longitude: lon,
@@ -231,6 +187,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
     }
     setRegion(newRegion)
     setHasInteracted(true)
+    ignoreNextRegionChange.current = true
     mapRef.current?.animateToRegion(newRegion, 1000)
 
     const parts = item.display_name.split(',')
@@ -255,20 +212,16 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
       }
       setHasInteracted(true)
       setRegion(newRegion)
+      ignoreNextRegionChange.current = true
       mapRef.current?.animateToRegion(newRegion, 1000)
       
-      let geocode = await Location.reverseGeocodeAsync({
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-      })
-      if (geocode.length > 0) {
-        const first = geocode[0]
-        const street = [first.street, first.streetNumber].filter(Boolean).join(' ')
-        if (street) {
-          setStreetAddress(street)
+      const result = await googleReverseGeocode(loc.coords.latitude, loc.coords.longitude)
+      if (result) {
+        if (result.street) {
+          setStreetAddress(result.street)
         }
-        if (first.city) {
-          setCity(first.city)
+        if (result.city) {
+          setCity(result.city)
         }
       }
     } catch (e) {
@@ -319,7 +272,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
     setStreetAddress('')
     setCity('Astana')
     setEntrance('')
-    setFloor('')
+    setHouse('')
     setDoor('')
     setBuildingName('')
     setCourierNotes('')
@@ -336,7 +289,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
     setStreetAddress(addr.street)
     setCity(addr.city)
     setEntrance(addr.entrance ?? '')
-    setFloor(addr.floor ?? '')
+    setHouse(addr.house ?? '')
     setDoor(addr.apartment ?? '')
     setBuildingName('')
     setCourierNotes('')
@@ -365,7 +318,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
     const label = saveAs === 'apartment' ? 'Apartment' : saveAs === 'office' ? 'Office' : 'Other'
 
     const isApartment = saveAs === 'apartment'
-    const safeHouse = (isApartment ? '1' : buildingName).trim().slice(0, 50)
+    const safeHouse = (isApartment ? house : buildingName).trim().slice(0, 50)
     const safeEntrance = (isApartment ? entrance : courierNotes).trim().slice(0, 50)
 
     const payload = {
@@ -374,7 +327,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
       street: streetAddress.trim(),
       house: safeHouse || '1',
       entrance: safeEntrance,
-      floor: isApartment ? floor.trim().slice(0, 50) : '',
+      floor: '',
       apartment: isApartment ? door.trim().slice(0, 50) : '',
       latitude: region.latitude,
       longitude: region.longitude,
@@ -403,6 +356,26 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
       setSelectedAddressId(result.data.id)
     }
     setMode('list')
+  }
+
+  const handleConfirm = async () => {
+    if (selectedAddressId) {
+      setSaving(true)
+      try {
+        const res = await setDefaultAddress(accessToken, selectedAddressId)
+        if (res.ok) {
+          onConfirmPress?.()
+        } else {
+          Alert.alert('Error', res.error?.message || 'Failed to confirm address')
+        }
+      } catch (err) {
+        Alert.alert('Error', 'An unexpected error occurred while confirming address')
+      } finally {
+        setSaving(false)
+      }
+    } else {
+      onConfirmPress?.()
+    }
   }
 
   return (
@@ -548,7 +521,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
           </ScrollView>
 
           <View style={[styles.confirmWrap, { paddingBottom: Math.max(24, insets.bottom + 12) }]}>
-            <Pressable onPress={onConfirmPress ?? onBackPress} style={styles.confirmButton}>
+            <Pressable onPress={handleConfirm} style={styles.confirmButton}>
               <Text allowFontScaling={false} style={styles.confirmText}>
                 Confirm Address
               </Text>
@@ -607,13 +580,13 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
               <View style={styles.tripleRow}>
                 <View style={styles.smallFieldGroup}>
                   <Text allowFontScaling={false} style={styles.fieldLabel}>
-                    ENTRANCE
+                    HOUSE
                   </Text>
                   <TextInput
                     allowFontScaling={false}
-                    value={entrance}
-                    onChangeText={setEntrance}
-                    placeholder="A"
+                    value={house}
+                    onChangeText={setHouse}
+                    placeholder="8"
                     placeholderTextColor="#6b7280"
                     style={styles.smallInput}
                     textAlign="center"
@@ -622,13 +595,13 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
 
                 <View style={styles.smallFieldGroup}>
                   <Text allowFontScaling={false} style={styles.fieldLabel}>
-                    FLOOR
+                    ENTRANCE
                   </Text>
                   <TextInput
                     allowFontScaling={false}
-                    value={floor}
-                    onChangeText={setFloor}
-                    placeholder="4"
+                    value={entrance}
+                    onChangeText={setEntrance}
+                    placeholder="2"
                     placeholderTextColor="#6b7280"
                     style={styles.smallInput}
                     textAlign="center"
@@ -643,7 +616,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
                     allowFontScaling={false}
                     value={door}
                     onChangeText={setDoor}
-                    placeholder="402"
+                    placeholder="12"
                     placeholderTextColor="#6b7280"
                     style={styles.smallInput}
                     textAlign="center"
@@ -775,7 +748,7 @@ export function UserAddressScreen({ accessToken, onBackPress, onConfirmPress }: 
             ref={mapRef}
             provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
             style={StyleSheet.absoluteFillObject}
-            initialRegion={region}
+            region={region}
             onRegionChangeComplete={onRegionChangeComplete}
             onPress={handleMapPress}
             showsMyLocationButton={false}

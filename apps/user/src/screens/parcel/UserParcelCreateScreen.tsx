@@ -1,23 +1,29 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Location from 'expo-location'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import {
   ActivityIndicator,
   Alert,
   Animated,
   Dimensions,
   Image,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native'
+import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { createParcelOrder } from '../../data/ordersApi'
-import { UserParcelAddressDetailsModal } from './UserParcelAddressDetailsModal'
+import { UserParcelAddressDetailsModal, type AddressDetails } from './UserParcelAddressDetailsModal'
+import { ParcelAddressSearchModal } from './ParcelAddressSearchModal'
+import { googleGeocode } from '../../data/googleMapsApi'
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window')
 
@@ -48,15 +54,6 @@ type UserParcelCreateScreenProps = {
   onCreated?: (orderId?: string) => void
 }
 
-type AddressDetails = {
-  street: string
-  city: string
-  entrance: string
-  apt: string
-  floor: string
-  doorCode: string
-  phone: string
-}
 
 const TRANSPORT_TYPES = [
   {
@@ -82,6 +79,9 @@ const TRANSPORT_TYPES = [
   },
 ]
 
+const DATE_SLOTS = ['Today', 'Tomorrow', 'Wed, 10.06', 'Thu, 11.06', 'Fri, 12.06', 'Sat, 13.06']
+const TIME_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00']
+
 const PARCEL_SIZES = [
   {
     id: 'SMALL' as const,
@@ -95,7 +95,32 @@ const PARCEL_SIZES = [
     title: 'Medium',
     desc: 'Shoebox, clothing, small electronics',
   },
+  {
+    id: 'LARGE' as const,
+    icon: ICONS.box,
+    title: 'Large',
+    desc: 'Big boxes, appliances, heavy packages',
+  },
 ]
+
+function calculateHaversineDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const R = 6371000 // Earth's radius in meters
+  const dLat = (lat2 - lat1) * (Math.PI / 180)
+  const dLon = (lon2 - lon1) * (Math.PI / 180)
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
 
 export function UserParcelCreateScreen({
   accessToken,
@@ -122,25 +147,68 @@ export function UserParcelCreateScreen({
   )
   const [parcelSize, setParcelSize] = useState(PARCEL_SIZES[0])
   const [loading, setLoading] = useState(false)
-  const [showAddressModal, setShowAddressModal] = useState(false)
+  const [doorToDoor, setDoorToDoor] = useState(true)
+
+  const [activeAddressModal, setActiveAddressModal] = useState<'from' | 'to' | null>(null)
   const [fromAddressDetails, setFromAddressDetails] = useState<AddressDetails>({
     street: '',
     city: 'Almaty',
-    entrance: 'Main',
+    entrance: '',
     apt: '',
     floor: '',
     doorCode: '',
     phone: '',
+    courierInstructions: '',
   })
   const [toAddressDetails, setToAddressDetails] = useState<AddressDetails>({
     street: '',
     city: 'Almaty',
-    entrance: 'Side gate',
-    apt: 'House',
+    entrance: '',
+    apt: '',
     floor: '',
     doorCode: '',
     phone: '',
+    courierInstructions: '',
   })
+
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [selectedDate, setSelectedDate] = useState('Today')
+  const [selectedTime, setSelectedTime] = useState('12:00')
+  const [tempDate, setTempDate] = useState('Today')
+  const [tempTime, setTempTime] = useState('12:00')
+
+  const [pickupSearchVisible, setPickupSearchVisible] = useState(false)
+  const [pickupSearchMode, setPickupSearchMode] = useState<'search' | 'map'>('search')
+  const [destSearchVisible, setDestSearchVisible] = useState(false)
+  const [destSearchMode, setDestSearchMode] = useState<'search' | 'map'>('search')
+  const [pickupCoords, setPickupCoords] = useState<{ latitude: number; longitude: number } | null>(
+    initialPickupCoordinates,
+  )
+  const [deliveryCoords, setDeliveryCoords] = useState<{ latitude: number; longitude: number } | null>(
+    initialDeliveryCoordinates,
+  )
+
+  const distanceKm = useMemo(() => {
+    if (!pickupCoords || !deliveryCoords) return 0
+    const rawMeters = calculateHaversineDistance(
+      pickupCoords.latitude,
+      pickupCoords.longitude,
+      deliveryCoords.latitude,
+      deliveryCoords.longitude,
+    )
+    return (rawMeters * 1.25) / 1000 // estimate road distance
+  }, [pickupCoords, deliveryCoords])
+
+  const totalPrice = useMemo(() => {
+    const base = transport.basePrice
+    const distanceCost = Math.round(distanceKm * 150)
+    let sizeSurcharge = 0
+    if (parcelSize.id === 'MEDIUM') sizeSurcharge = 300
+    else if (parcelSize.id === 'LARGE') sizeSurcharge = 600
+    const doorSurcharge = doorToDoor ? 200 : 0
+    const fee = 150 // fixed service fee
+    return Math.round(base + distanceCost + sizeSurcharge + doorSurcharge + fee)
+  }, [transport.basePrice, distanceKm, parcelSize.id, doorToDoor])
 
   const contentAnim = useRef(new Animated.Value(0)).current
 
@@ -167,7 +235,20 @@ export function UserParcelCreateScreen({
     }))
   }, [destAddress])
 
-  const estimatedPrice = () => transport.basePrice
+  const openScheduleModal = () => {
+    setTempDate(selectedDate)
+    setTempTime(selectedTime)
+    setShowScheduleModal(true)
+  }
+
+  const confirmSchedule = () => {
+    setSelectedDate(tempDate)
+    setSelectedTime(tempTime)
+    setTransport(TRANSPORT_TYPES.find(t => t.id === 'SCHEDULED')!)
+    setShowScheduleModal(false)
+  }
+
+  const estimatedPrice = () => totalPrice
 
   const geocodeOrderAddress = async (street: string) => {
     const normalizedStreet = street.trim()
@@ -183,12 +264,9 @@ export function UserParcelCreateScreen({
 
     for (const query of queries) {
       try {
-        const results = await Location.geocodeAsync(query)
-        if (results[0]) {
-          return {
-            latitude: results[0].latitude,
-            longitude: results[0].longitude,
-          }
+        const result = await googleGeocode(query)
+        if (result) {
+          return result
         }
       } catch {
         // Ignore temporary geocoder failures and try the next variant.
@@ -201,10 +279,9 @@ export function UserParcelCreateScreen({
   const handleUpdateAddress = (type: 'from' | 'to', updatedAddress: AddressDetails) => {
     if (type === 'from') {
       setFromAddressDetails(updatedAddress)
-      return
+    } else {
+      setToAddressDetails(updatedAddress)
     }
-
-    setToAddressDetails(updatedAddress)
   }
 
   const handleSubmit = async () => {
@@ -229,28 +306,36 @@ export function UserParcelCreateScreen({
       const pickupStreet = pickupAddress.trim()
       const deliveryStreet = destAddress.trim()
 
-      const [pickupCoords, deliveryCoords] = await Promise.all([
-        pickupStreet === initialPickupAddress.trim() && initialPickupCoordinates
-          ? Promise.resolve(initialPickupCoordinates)
-          : geocodeOrderAddress(pickupStreet),
-        deliveryStreet === initialDeliveryAddress.trim() && initialDeliveryCoordinates
-          ? Promise.resolve(initialDeliveryCoordinates)
+      const [resolvedPickupCoords, resolvedDeliveryCoords] = await Promise.all([
+        pickupCoords
+          ? Promise.resolve(pickupCoords)
+          : pickupStreet === initialPickupAddress.trim() && initialPickupCoordinates
+            ? Promise.resolve(initialPickupCoordinates)
+            : geocodeOrderAddress(pickupStreet),
+        deliveryCoords
+          ? Promise.resolve(deliveryCoords)
+          : deliveryStreet === initialDeliveryAddress.trim() && initialDeliveryCoordinates
+            ? Promise.resolve(initialDeliveryCoordinates)
           : geocodeOrderAddress(deliveryStreet),
       ])
 
       const response = await createParcelOrder(accessToken, {
         pickupAddress: pickupStreet,
-        pickupLat: pickupCoords?.latitude,
-        pickupLon: pickupCoords?.longitude,
+        pickupLat: resolvedPickupCoords?.latitude,
+        pickupLon: resolvedPickupCoords?.longitude,
         pickupContactName: pickupContactName.trim(),
         pickupContactPhone: pickupContactPhone.trim() || fromAddressDetails.phone.trim(),
         deliveryAddress: deliveryStreet,
-        deliveryLat: deliveryCoords?.latitude,
-        deliveryLon: deliveryCoords?.longitude,
+        deliveryLat: resolvedDeliveryCoords?.latitude,
+        deliveryLon: resolvedDeliveryCoords?.longitude,
         recipientName: recipientName.trim(),
         recipientPhone: recipientPhone.trim() || toAddressDetails.phone.trim(),
         packageDescription: `${parcelSize.title} - ${packageDesc.trim() || 'Parcel'}`,
-        comment: notes.trim(),
+        parcelSize: parcelSize.id,
+        totalPrice: totalPrice,
+        comment: transport.id === 'SCHEDULED'
+          ? (notes.trim() ? `${notes.trim()} (Scheduled for: ${selectedDate} at ${selectedTime})` : `Scheduled for: ${selectedDate} at ${selectedTime}`)
+          : notes.trim(),
         serviceType: transport.id,
       })
 
@@ -268,24 +353,19 @@ export function UserParcelCreateScreen({
         response.data.data?.orderId ??
         response.data.data?.id
 
-      if (createdOrderId && (pickupCoords || deliveryCoords)) {
+      if (createdOrderId && (resolvedPickupCoords || resolvedDeliveryCoords)) {
         await AsyncStorage.setItem(
           `order_${createdOrderId}`,
           JSON.stringify({
-            pickupLat: pickupCoords?.latitude ?? null,
-            pickupLon: pickupCoords?.longitude ?? null,
-            deliveryLat: deliveryCoords?.latitude ?? null,
-            deliveryLon: deliveryCoords?.longitude ?? null,
+            pickupLat: resolvedPickupCoords?.latitude ?? null,
+            pickupLon: resolvedPickupCoords?.longitude ?? null,
+            deliveryLat: resolvedDeliveryCoords?.latitude ?? null,
+            deliveryLon: resolvedDeliveryCoords?.longitude ?? null,
           }),
         )
       }
 
-      Alert.alert('Order created!', 'Courier will be assigned shortly.', [
-        {
-          text: 'Track Order',
-          onPress: () => onCreated?.(createdOrderId),
-        },
-      ])
+      onCreated?.(createdOrderId)
     } catch (error) {
       Alert.alert(
         'Order failed',
@@ -371,42 +451,40 @@ export function UserParcelCreateScreen({
               <View style={styles.routeInputs}>
                 <View>
                   <Text style={styles.fieldLabel}>From</Text>
-                  <View style={styles.inputWithButton}>
-                    <TextInput
-                      style={[styles.inputSoft, styles.inputWithButtonField]}
-                      value={pickupAddress}
-                      onChangeText={setPickupAddress}
-                      placeholder="123 Origin St, City Center"
-                      placeholderTextColor="#241916"
-                    />
-                    <TouchableOpacity
-                      style={styles.addressDetailBtn}
-                      onPress={() => setShowAddressModal(true)}
-                      activeOpacity={0.85}
+                  <TouchableOpacity
+                    style={[styles.inputSoft, styles.inputTouchable]}
+                    onPress={() => setActiveAddressModal('from')}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[
+                        styles.inputTouchableText,
+                        !pickupAddress && styles.inputTouchablePlaceholder,
+                      ]}
+                      numberOfLines={1}
                     >
-                      <Text style={styles.addressDetailBtnIcon}>i</Text>
-                    </TouchableOpacity>
-                  </View>
+                      {pickupAddress || '123 Origin St, City Center'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.inputGroupSpacing}>
                   <Text style={styles.fieldLabel}>To</Text>
-                  <View style={styles.inputWithButton}>
-                    <TextInput
-                      style={[styles.inputSoft, styles.inputWithButtonField]}
-                      value={destAddress}
-                      onChangeText={setDestAddress}
-                      placeholder="Receiver address"
-                      placeholderTextColor="#6B7280"
-                    />
-                    <TouchableOpacity
-                      style={styles.addressDetailBtn}
-                      onPress={() => setShowAddressModal(true)}
-                      activeOpacity={0.85}
+                  <TouchableOpacity
+                    style={[styles.inputSoft, styles.inputTouchable]}
+                    onPress={() => setActiveAddressModal('to')}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[
+                        styles.inputTouchableText,
+                        !destAddress && styles.inputTouchablePlaceholder,
+                      ]}
+                      numberOfLines={1}
                     >
-                      <Text style={styles.addressDetailBtnIcon}>i</Text>
-                    </TouchableOpacity>
-                  </View>
+                      {destAddress || 'Receiver address'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -423,7 +501,7 @@ export function UserParcelCreateScreen({
                   <TouchableOpacity
                     key={item.id}
                     style={[styles.deliveryCard, active && styles.deliveryCardActive]}
-                    onPress={() => setTransport(item)}
+                    onPress={() => item.id === 'SCHEDULED' ? openScheduleModal() : setTransport(item)}
                     activeOpacity={0.85}
                   >
                     {item.desc ? (
@@ -442,6 +520,32 @@ export function UserParcelCreateScreen({
                   </TouchableOpacity>
                 )
               })}
+            </View>
+
+            {transport.id === 'SCHEDULED' && (
+              <View style={styles.scheduleHint}>
+                <Feather name="clock" size={14} color="#FF7A59" />
+                <Text style={styles.scheduleHintText}>
+                  Delivery scheduled for {selectedDate} at {selectedTime}
+                </Text>
+                <TouchableOpacity onPress={openScheduleModal}>
+                  <Text style={styles.scheduleHintChange}>Change</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={styles.doorToDoorRow}>
+              <View style={styles.doorToDoorTextWrap}>
+                <Text style={styles.doorToDoorTitle}>Door-to-door delivery</Text>
+                <Text style={styles.doorToDoorDesc}>Courier picks up and delivers directly to the door</Text>
+              </View>
+              <Switch
+                trackColor={{ false: '#E2E8F0', true: '#FFE4DE' }}
+                thumbColor={doorToDoor ? '#FF7A59' : '#94A3B8'}
+                ios_backgroundColor="#E2E8F0"
+                onValueChange={setDoorToDoor}
+                value={doorToDoor}
+              />
             </View>
           </View>
 
@@ -543,6 +647,50 @@ export function UserParcelCreateScreen({
               multiline
               textAlignVertical="top"
             />
+
+            {/* Price Details Breakdown */}
+            <View style={{ marginTop: 16 }}>
+              <Text style={styles.parcelTitle}>Price Details</Text>
+              <View style={styles.priceDetailsCard}>
+                <View style={styles.priceDetailsRow}>
+                  <Text style={styles.priceDetailsText}>Base Fare ({transport.label})</Text>
+                  <Text style={styles.priceDetailsValue}>₸{transport.basePrice}</Text>
+                </View>
+                
+                <View style={styles.priceDetailsRow}>
+                  <Text style={styles.priceDetailsText}>Distance ({distanceKm.toFixed(1)} km)</Text>
+                  <Text style={styles.priceDetailsValue}>₸{Math.round(distanceKm * 150)}</Text>
+                </View>
+
+                {parcelSize.id !== 'SMALL' && (
+                  <View style={styles.priceDetailsRow}>
+                    <Text style={styles.priceDetailsText}>Box Size ({parcelSize.title})</Text>
+                    <Text style={styles.priceDetailsValue}>
+                      +₸{parcelSize.id === 'MEDIUM' ? 300 : 600}
+                    </Text>
+                  </View>
+                )}
+
+                {doorToDoor && (
+                  <View style={styles.priceDetailsRow}>
+                    <Text style={styles.priceDetailsText}>Door-to-door Surcharge</Text>
+                    <Text style={styles.priceDetailsValue}>+₸200</Text>
+                  </View>
+                )}
+
+                <View style={styles.priceDetailsRow}>
+                  <Text style={styles.priceDetailsText}>Service Fee</Text>
+                  <Text style={styles.priceDetailsValue}>+₸150</Text>
+                </View>
+
+                <View style={styles.priceDetailsDivider} />
+
+                <View style={styles.priceDetailsRow}>
+                  <Text style={[styles.priceDetailsText, styles.priceDetailsTotalText]}>Total Price</Text>
+                  <Text style={[styles.priceDetailsValue, styles.priceDetailsTotalValue]}>₸{totalPrice}</Text>
+                </View>
+              </View>
+            </View>
           </View>
         </ScrollView>
       </Animated.View>
@@ -578,12 +726,135 @@ export function UserParcelCreateScreen({
       </View>
 
       <UserParcelAddressDetailsModal
-        visible={showAddressModal}
-        onClose={() => setShowAddressModal(false)}
-        fromAddress={fromAddressDetails}
-        toAddress={toAddressDetails}
-        onUpdateAddress={handleUpdateAddress}
+        visible={activeAddressModal === 'from'}
+        type="from"
+        address={fromAddressDetails}
+        onClose={() => setActiveAddressModal(null)}
+        onUpdate={updated => handleUpdateAddress('from', updated)}
+        onChangeAddress={() => {
+          setActiveAddressModal(null)
+          setPickupSearchMode('search')
+          setPickupSearchVisible(true)
+        }}
+        onChooseOnMap={() => {
+          setActiveAddressModal(null)
+          setPickupSearchMode('map')
+          setPickupSearchVisible(true)
+        }}
       />
+
+      <UserParcelAddressDetailsModal
+        visible={activeAddressModal === 'to'}
+        type="to"
+        address={toAddressDetails}
+        onClose={() => setActiveAddressModal(null)}
+        onUpdate={updated => handleUpdateAddress('to', updated)}
+        onChangeAddress={() => {
+          setActiveAddressModal(null)
+          setDestSearchMode('search')
+          setDestSearchVisible(true)
+        }}
+        onChooseOnMap={() => {
+          setActiveAddressModal(null)
+          setDestSearchMode('map')
+          setDestSearchVisible(true)
+        }}
+      />
+
+      <ParcelAddressSearchModal
+        visible={pickupSearchVisible}
+        title="Pickup Point"
+        initialAddress={pickupAddress}
+        initialCoords={pickupCoords}
+        initialMode={pickupSearchMode}
+        onClose={() => setPickupSearchVisible(false)}
+        onSelect={(address, coords) => {
+          setPickupAddress(address)
+          setPickupCoords(coords)
+        }}
+      />
+
+      <ParcelAddressSearchModal
+        visible={destSearchVisible}
+        title="Destination"
+        initialAddress={destAddress}
+        initialCoords={deliveryCoords}
+        initialMode={destSearchMode}
+        onClose={() => setDestSearchVisible(false)}
+        onSelect={(address, coords) => {
+          setDestAddress(address)
+          setDeliveryCoords(coords)
+        }}
+      />
+
+      <Modal
+        transparent
+        animationType="slide"
+        visible={showScheduleModal}
+        onRequestClose={() => setShowScheduleModal(false)}
+      >
+        <View style={styles.schedModalOverlay}>
+          <Pressable style={styles.schedModalBackdrop} onPress={() => setShowScheduleModal(false)} />
+
+          <View style={styles.schedModalSheet}>
+            <View style={styles.schedModalHandle} />
+
+            <View style={styles.schedModalHeader}>
+              <Text style={styles.schedModalTitle}>Schedule delivery</Text>
+              <Pressable
+                style={styles.schedModalCloseBtn}
+                onPress={() => setShowScheduleModal(false)}
+              >
+                <Feather name="x" size={18} color="#58423c" />
+              </Pressable>
+            </View>
+
+            <View style={styles.schedColumnsWrap}>
+              <ScrollView style={styles.schedColumn} showsVerticalScrollIndicator={false}>
+                <View style={styles.schedColumnInner}>
+                  {DATE_SLOTS.map(date => {
+                    const active = tempDate === date
+                    return (
+                      <Pressable
+                        key={date}
+                        onPress={() => setTempDate(date)}
+                        style={[styles.schedSlot, active && styles.schedSlotActive]}
+                      >
+                        <Text style={[styles.schedSlotText, active && styles.schedSlotTextActive]}>
+                          {date}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              </ScrollView>
+
+              <ScrollView style={styles.schedColumn} showsVerticalScrollIndicator={false}>
+                <View style={styles.schedColumnInner}>
+                  {TIME_SLOTS.map(time => {
+                    const active = tempTime === time
+                    return (
+                      <Pressable
+                        key={time}
+                        onPress={() => setTempTime(time)}
+                        style={[styles.schedSlot, active && styles.schedSlotActive]}
+                      >
+                        <Text style={[styles.schedSlotText, active && styles.schedSlotTextActive]}>
+                          {time}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              </ScrollView>
+            </View>
+
+            <Pressable style={styles.schedConfirmBtn} onPress={confirmSchedule}>
+              <Text style={styles.schedConfirmText}>Confirm</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -770,30 +1041,17 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontWeight: '400',
   },
-  inputWithButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  inputWithButtonField: {
-    flex: 1,
-    margin: 0,
-  },
-  addressDetailBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(223,192,184,0.50)',
-    backgroundColor: '#FFF8F6',
-    alignItems: 'center',
+  inputTouchable: {
     justifyContent: 'center',
   },
-  addressDetailBtnIcon: {
-    fontSize: 18,
-    lineHeight: 18,
+  inputTouchableText: {
+    color: '#241916',
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: '400',
+  },
+  inputTouchablePlaceholder: {
     color: '#6B7280',
-    fontWeight: '700',
   },
   block: {
     marginBottom: 32,
@@ -1050,5 +1308,189 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  scheduleHint: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 4,
+  },
+  scheduleHintText: {
+    flex: 1,
+    color: '#58423C',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  scheduleHintChange: {
+    color: '#FF7A59',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  schedModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(25, 28, 30, 0.4)',
+  },
+  schedModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  schedModalSheet: {
+    minHeight: 450,
+    maxHeight: '78%',
+    paddingHorizontal: 24,
+    paddingTop: 14,
+    paddingBottom: 32,
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    shadowColor: '#191c1e',
+    shadowOffset: { width: 0, height: -20 },
+    shadowOpacity: 0.08,
+    shadowRadius: 40,
+    elevation: 12,
+  },
+  schedModalHandle: {
+    alignSelf: 'center',
+    width: 48,
+    height: 4,
+    borderRadius: 999,
+    marginBottom: 24,
+    backgroundColor: '#e0e3e5',
+  },
+  schedModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  schedModalTitle: {
+    color: '#191c1e',
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '700',
+  },
+  schedModalCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f2f4f6',
+  },
+  schedColumnsWrap: {
+    flexDirection: 'row',
+    height: 220,
+    gap: 16,
+    marginBottom: 24,
+  },
+  schedColumn: {
+    flex: 1,
+    backgroundColor: '#f2f4f6',
+    borderRadius: 24,
+    padding: 8,
+  },
+  schedColumnInner: {
+    paddingBottom: 16,
+  },
+  schedSlot: {
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    marginVertical: 4,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  schedSlotActive: {
+    backgroundColor: 'rgba(255, 122, 89, 0.08)',
+    borderColor: '#FF7A59',
+  },
+  schedSlotText: {
+    color: '#191c1e',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  schedSlotTextActive: {
+    color: '#FF7A59',
+    fontWeight: '700',
+  },
+  schedConfirmBtn: {
+    height: 64,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#c65432',
+    shadowColor: '#a7391e',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  schedConfirmText: {
+    color: '#ffffff',
+    fontSize: 18,
+    lineHeight: 28,
+    fontWeight: '700',
+  },
+  priceDetailsCard: {
+    backgroundColor: '#FAFAF9',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E7E5E4',
+    marginTop: 8,
+  },
+  priceDetailsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  priceDetailsText: {
+    fontSize: 14,
+    color: '#57534E',
+  },
+  priceDetailsValue: {
+    fontSize: 14,
+    color: '#1C1917',
+    fontWeight: '500',
+  },
+  priceDetailsDivider: {
+    height: 1,
+    backgroundColor: '#E7E5E4',
+    marginVertical: 8,
+  },
+  priceDetailsTotalText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1C1917',
+  },
+  priceDetailsTotalValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FF7A59',
+  },
+  doorToDoorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  doorToDoorTextWrap: {
+    flex: 1,
+    paddingRight: 16,
+  },
+  doorToDoorTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1C1917',
+  },
+  doorToDoorDesc: {
+    fontSize: 12,
+    color: '#78716C',
+    marginTop: 2,
   },
 })

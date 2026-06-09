@@ -17,7 +17,8 @@ type UserOrdersScreenProps = {
   supplementalOrders?: UserOrder[]
   reloadKey?: number
   onUnauthorized?: () => void
-  onOrderPress?: (order: UserOrder) => void
+  onActiveOrderPress?: (order: UserOrder) => void
+  onPastOrderPress?: (order: UserOrder) => void
   onHomePress?: () => void
   onCartPress?: () => void
   onProfilePress?: () => void
@@ -34,6 +35,7 @@ const ACTIVE_ORDER_STATUSES = new Set([
   'PICKED_UP',
   'IN_TRANSIT',
   'DELIVERY_CONFIRMATION_PENDING',
+  'ASSIGNMENT_PENDING',
 ])
 
 const STATUS_META: Record<
@@ -125,16 +127,24 @@ const STATUS_META: Record<
   },
 }
 
+function isFoodOrder(order?: UserOrder) {
+  if (!order) return false
+  return order.serviceType === 'FOOD' || 
+         !!order.companyId || 
+         (!!order.comment && order.comment.includes('Food order from'))
+}
+
 function resolveOrderIcon(order: UserOrder, variant: 'active' | 'past' = 'active') {
-  if (variant === 'past' && order.status === 'DELIVERED') {
+  const upperStatus = order.status?.toUpperCase()
+  if (variant === 'past' && upperStatus === 'DELIVERED') {
     return <Feather name="check-circle" size={20} color="#58423C" />
   }
 
-  if (variant === 'past' && ['CANCELLED', 'REJECTED'].includes(order.status)) {
+  if (variant === 'past' && ['CANCELLED', 'REJECTED'].includes(upperStatus)) {
     return <Feather name="x-circle" size={20} color="#58423C" />
   }
 
-  if (order.serviceType === 'FOOD') {
+  if (isFoodOrder(order)) {
     return <MaterialCommunityIcons name="silverware-fork-knife" size={20} color="#FF7A59" />
   }
 
@@ -146,12 +156,12 @@ function resolveOrderIcon(order: UserOrder, variant: 'active' | 'past' = 'active
 }
 
 function isActiveOrder(order: UserOrder) {
-  return ACTIVE_ORDER_STATUSES.has(order.status)
+  return ACTIVE_ORDER_STATUSES.has(order.status?.toUpperCase())
 }
 
 function formatOrderTitle(order: UserOrder) {
   const pickupName = order.pickupInfo?.name?.trim()
-  if (order.serviceType === 'FOOD' && pickupName) {
+  if (isFoodOrder(order) && pickupName) {
     return pickupName
   }
 
@@ -167,7 +177,7 @@ function formatOrderTitle(order: UserOrder) {
     return 'Scheduled Parcel'
   }
 
-  if (order.serviceType && order.serviceType !== 'FOOD') {
+  if (order.serviceType && !isFoodOrder(order)) {
     return 'Parcel Delivery'
   }
 
@@ -178,7 +188,7 @@ function formatOrderTitle(order: UserOrder) {
 }
 
 function formatOrderSubtitle(order: UserOrder) {
-  if (order.serviceType === 'FOOD') {
+  if (isFoodOrder(order)) {
     return 'Food Delivery'
   }
 
@@ -189,7 +199,7 @@ function formatAmount(order: UserOrder) {
   const value = order.totalAmount
   const safeValue = typeof value === 'number' && !Number.isNaN(value) ? value : 0
 
-  if (order.serviceType === 'FOOD') {
+  if (isFoodOrder(order)) {
     return `$${safeValue.toFixed(2)}`
   }
 
@@ -216,7 +226,8 @@ function formatOrderCode(orderId: string) {
 }
 
 function formatTopPill(order: UserOrder) {
-  switch (order.status) {
+  const upperStatus = order.status?.toUpperCase()
+  switch (upperStatus) {
     case 'IN_TRANSIT':
     case 'PICKED_UP':
       return 'ON THE WAY'
@@ -229,23 +240,24 @@ function formatTopPill(order: UserOrder) {
     case 'READY':
       return 'READY'
     case 'ACCEPTED':
-      return order.serviceType === 'FOOD' ? 'COOKING' : 'IN PROGRESS'
+      return isFoodOrder(order) ? 'COOKING' : 'IN PROGRESS'
     case 'NEW':
       return order.serviceType === 'SCHEDULED' ? 'SCHEDULED' : 'NEW'
     default:
-      return (STATUS_META[order.status]?.label ?? 'ACTIVE').toUpperCase()
+      return (STATUS_META[upperStatus]?.label ?? 'ACTIVE').toUpperCase()
   }
 }
 
 function getTopPillStyle(order: UserOrder) {
-  if (['IN_TRANSIT', 'PICKED_UP', 'DELIVERY_CONFIRMATION_PENDING'].includes(order.status)) {
+  const upperStatus = order.status?.toUpperCase()
+  if (['IN_TRANSIT', 'PICKED_UP', 'DELIVERY_CONFIRMATION_PENDING'].includes(upperStatus)) {
     return {
       backgroundColor: 'rgba(174, 198, 255, 0.20)',
       color: '#003275',
     }
   }
 
-  if (order.status === 'DELIVERED') {
+  if (upperStatus === 'DELIVERED') {
     return {
       backgroundColor: 'rgba(127, 212, 139, 0.18)',
       color: '#446744',
@@ -259,7 +271,7 @@ function getTopPillStyle(order: UserOrder) {
 }
 
 function getActionButtonStyle(order: UserOrder) {
-  if (order.serviceType === 'FOOD') {
+  if (isFoodOrder(order)) {
     return {
       backgroundColor: '#FF7A59',
       color: '#FFFFFF',
@@ -275,7 +287,8 @@ function getActionButtonStyle(order: UserOrder) {
 }
 
 function formatPastSubtitle(order: UserOrder) {
-  const status = STATUS_META[order.status] ?? STATUS_META.NEW
+  const upperStatus = order.status?.toUpperCase()
+  const status = STATUS_META[upperStatus] ?? STATUS_META.NEW
   return `${status.label} • ${formatShortDate(order.updatedAt ?? order.createdAt)}`
 }
 
@@ -311,7 +324,8 @@ function ActiveOrderCard({
   order: UserOrder
   onPress?: (order: UserOrder) => void
 }) {
-  const status = STATUS_META[order.status] ?? STATUS_META.NEW
+  const upperStatus = order.status?.toUpperCase()
+  const status = STATUS_META[upperStatus] ?? STATUS_META.NEW
   const topPillStyle = getTopPillStyle(order)
   const actionButtonStyle = getActionButtonStyle(order)
 
@@ -406,7 +420,8 @@ export function UserOrdersScreen({
   supplementalOrders = [],
   reloadKey = 0,
   onUnauthorized,
-  onOrderPress,
+  onActiveOrderPress,
+  onPastOrderPress,
   onHomePress,
   onCartPress,
   onProfilePress,
@@ -567,7 +582,7 @@ export function UserOrdersScreen({
                       <ActiveOrderCard
                         key={order.orderId}
                         order={order}
-                        onPress={onOrderPress}
+                        onPress={onActiveOrderPress}
                       />
                     ))}
                   </View>
@@ -583,7 +598,7 @@ export function UserOrdersScreen({
                         <PastOrderCard
                           key={order.orderId}
                           order={order}
-                          onPress={onOrderPress}
+                          onPress={onPastOrderPress}
                         />
                       ))}
                     </View>
@@ -601,7 +616,7 @@ export function UserOrdersScreen({
                   <PastOrderCard
                     key={order.orderId}
                     order={order}
-                    onPress={onOrderPress}
+                    onPress={onPastOrderPress}
                   />
                 ))}
               </View>

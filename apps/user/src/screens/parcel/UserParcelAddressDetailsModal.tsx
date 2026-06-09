@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
 import {
   Modal,
-  SafeAreaView,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native'
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-type AddressDetails = {
+export type AddressDetails = {
   street: string
   city: string
   entrance: string
@@ -18,436 +19,309 @@ type AddressDetails = {
   floor: string
   doorCode: string
   phone: string
+  courierInstructions: string
 }
-
-type AddressDetailsTab = 'Address' | 'Route on map' | 'About delivery'
 
 type UserParcelAddressDetailsModalProps = {
   visible: boolean
+  type: 'from' | 'to'
+  address: AddressDetails
   onClose: () => void
-  fromAddress: AddressDetails
-  toAddress: AddressDetails
-  onUpdateAddress?: (type: 'from' | 'to', updatedAddress: AddressDetails) => void
+  onUpdate: (address: AddressDetails) => void
+  onChangeAddress?: () => void
+  onChooseOnMap?: () => void
 }
-
-const TABS: AddressDetailsTab[] = ['Address', 'Route on map', 'About delivery']
 
 export function UserParcelAddressDetailsModal({
   visible,
+  type,
+  address,
   onClose,
-  fromAddress,
-  toAddress,
-  onUpdateAddress,
+  onUpdate,
+  onChangeAddress,
+  onChooseOnMap,
 }: UserParcelAddressDetailsModalProps) {
-  const [activeTab, setActiveTab] = useState<AddressDetailsTab>('Address')
-  const [localFromAddress, setLocalFromAddress] = useState(fromAddress)
-  const [localToAddress, setLocalToAddress] = useState(toAddress)
+  const insets = useSafeAreaInsets()
+  const [local, setLocal] = useState<AddressDetails>(address)
 
   useEffect(() => {
-    setLocalFromAddress(fromAddress)
-    setLocalToAddress(toAddress)
-  }, [fromAddress, toAddress])
+    setLocal(address)
+  }, [address, visible])
 
-  const handleUpdateFromAddress = (field: keyof AddressDetails, value: string) => {
-    const updated = { ...localFromAddress, [field]: value }
-    setLocalFromAddress(updated)
-    onUpdateAddress?.('from', updated)
+  const set = (field: keyof AddressDetails, value: string) => {
+    const updated = { ...local, [field]: value }
+    setLocal(updated)
+    onUpdate(updated)
   }
 
-  const handleUpdateToAddress = (field: keyof AddressDetails, value: string) => {
-    const updated = { ...localToAddress, [field]: value }
-    setLocalToAddress(updated)
-    onUpdateAddress?.('to', updated)
-  }
-
-  const renderAddressDetailsRow = (
-    label1: string,
-    field1: keyof AddressDetails,
-    value1: string,
-    onChange1: (field: keyof AddressDetails, value: string) => void,
-    label2: string,
-    field2: keyof AddressDetails,
-    value2: string,
-    onChange2: (field: keyof AddressDetails, value: string) => void,
-  ) => (
-    <View style={styles.detailRow}>
-      <View style={styles.detailFieldHalf}>
-        <Text style={styles.detailLabel}>{label1}</Text>
-        <TextInput
-          style={styles.detailInput}
-          value={value1}
-          onChangeText={text => onChange1(field1, text)}
-          placeholderTextColor="#9CA3AF"
-        />
-      </View>
-      <View style={styles.detailFieldHalf}>
-        <Text style={styles.detailLabel}>{label2}</Text>
-        <TextInput
-          style={styles.detailInput}
-          value={value2}
-          onChangeText={text => onChange2(field2, text)}
-          placeholderTextColor="#9CA3AF"
-        />
-      </View>
-    </View>
-  )
-
-  const renderAddressCard = (
-    label: 'FROM' | 'TO',
-    address: AddressDetails,
-    onChange: (field: keyof AddressDetails, value: string) => void,
-  ) => (
-    <View style={styles.addressCard}>
-      <View style={styles.addressHeader}>
-        <View style={styles.addressHeaderText}>
-          <Text style={styles.addressLabel}>{label}</Text>
-          <Text style={styles.addressMain}>{address.street || (label === 'FROM' ? 'Pickup address' : 'Delivery address')}</Text>
-          <Text style={styles.addressCity}>{address.city || 'Almaty, Kazakhstan'}</Text>
-        </View>
-        <TouchableOpacity style={styles.chevronButton} activeOpacity={0.85}>
-          <Text style={styles.chevronIcon}>›</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.addressDetailsFields}>
-        {renderAddressDetailsRow(
-          'Entrance',
-          'entrance',
-          address.entrance,
-          onChange,
-          'Apt / Office',
-          'apt',
-          address.apt,
-          onChange,
-        )}
-        {renderAddressDetailsRow(
-          'Floor',
-          'floor',
-          address.floor,
-          onChange,
-          'Door code',
-          'doorCode',
-          address.doorCode,
-          onChange,
-        )}
-      </View>
-
-      <View style={styles.detailsSection}>
-        <TouchableOpacity style={styles.detailItem} activeOpacity={0.85}>
-          <View style={styles.iconCircle}>
-            <Text style={styles.icon}>i</Text>
-          </View>
-          <Text style={styles.detailItemText}>Details and photos</Text>
-          <Text style={styles.chevronSmall}>›</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.detailItem} activeOpacity={1}>
-          <View style={styles.iconCircle}>
-            <Text style={styles.icon}>#</Text>
-          </View>
-          <TextInput
-            style={[styles.detailItemText, styles.phoneInput]}
-            value={address.phone}
-            onChangeText={text => onChange('phone', text)}
-            keyboardType="phone-pad"
-            placeholder="+7 777 000 00 00"
-            placeholderTextColor="#9CA3AF"
-          />
-          <Text style={styles.chevronSmall}>›</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  )
+  const label = type === 'from' ? 'From' : 'To'
+  const placeholder = type === 'from' ? 'Pickup address' : 'Delivery address'
+  const icon = type === 'from' ? 'map-pin' : 'navigation'
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <View style={styles.headerDragHandle} />
-          <Text style={styles.headerTitle}>Details</Text>
+    <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <Pressable style={styles.backdrop} onPress={onClose} />
 
-          <View style={styles.tabsContainer}>
-            {TABS.map(tab => (
-              <TouchableOpacity
-                key={tab}
-                onPress={() => setActiveTab(tab)}
-                style={[styles.tab, activeTab === tab ? styles.tabActive : styles.tabInactive]}
-                activeOpacity={0.88}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    activeTab === tab ? styles.tabTextActive : styles.tabTextInactive,
-                  ]}
-                >
-                  {tab}
-                </Text>
-              </TouchableOpacity>
-            ))}
+        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
+          <View style={styles.handleWrap}>
+            <View style={styles.handle} />
           </View>
-        </View>
 
-        <ScrollView
-          style={styles.content}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.contentInner}
-        >
-          {activeTab === 'Address' ? (
-            <View style={styles.detailsContainer}>
-              {renderAddressCard('FROM', localFromAddress, handleUpdateFromAddress)}
-              {renderAddressCard('TO', localToAddress, handleUpdateToAddress)}
+          <View style={styles.addressHeader}>
+            <View style={styles.addressIconCircle}>
+              <Feather name={icon} size={16} color="#ff7a59" />
             </View>
-          ) : (
-            <View style={styles.placeholderContent}>
-              <Text style={styles.placeholderText}>
-                {activeTab === 'Route on map' ? 'Map details are mock for now' : 'Delivery details are mock for now'}
+            <View style={styles.addressTitleWrap}>
+              <Text style={styles.addressLabel}>{label}</Text>
+              <Text style={styles.addressTitle} numberOfLines={1}>
+                {local.street || placeholder}
               </Text>
             </View>
-          )}
-        </ScrollView>
+            <Pressable style={styles.changeBtn} onPress={onChangeAddress}>
+              <Feather name="chevron-right" size={18} color="#58423c" />
+            </Pressable>
+          </View>
 
-        <View style={styles.footer}>
-          <TouchableOpacity style={styles.doneButton} onPress={onClose} activeOpacity={0.88}>
-            <Text style={styles.doneButtonText}>Done</Text>
-          </TouchableOpacity>
+          <ScrollView
+            style={styles.scrollArea}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Pressable style={styles.mapRow} onPress={onChooseOnMap}>
+              <View style={styles.mapRowLeft}>
+                <MaterialCommunityIcons name="map-marker-outline" size={18} color="#aec6ff" />
+                <Text style={styles.mapRowText}>Choose on map</Text>
+              </View>
+              <Feather name="chevron-right" size={16} color="#58423c" />
+            </Pressable>
+
+            <View style={styles.grid}>
+              <View style={styles.card}>
+                <Text style={styles.cardLabel}>ENTRANCE</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  value={local.entrance}
+                  onChangeText={v => set('entrance', v)}
+                  placeholder="1"
+                  placeholderTextColor="#9CA3AF"
+                  selectionColor="#ff7a59"
+                />
+              </View>
+              <View style={styles.card}>
+                <Text style={styles.cardLabel}>APARTMENT, OFFICE</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  value={local.apt}
+                  onChangeText={v => set('apt', v)}
+                  placeholder="42"
+                  placeholderTextColor="#9CA3AF"
+                  selectionColor="#ff7a59"
+                />
+              </View>
+              <View style={styles.card}>
+                <Text style={styles.cardLabel}>FLOOR</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  value={local.floor}
+                  onChangeText={v => set('floor', v)}
+                  placeholder="5"
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="numeric"
+                  selectionColor="#ff7a59"
+                />
+              </View>
+              <View style={styles.card}>
+                <Text style={styles.cardLabel}>DOOR PHONE</Text>
+                <TextInput
+                  style={styles.cardInput}
+                  value={local.doorCode}
+                  onChangeText={v => set('doorCode', v)}
+                  placeholder="1234"
+                  placeholderTextColor="#9CA3AF"
+                  selectionColor="#ff7a59"
+                />
+              </View>
+            </View>
+
+            <View style={styles.instructionsCard}>
+              <Text style={styles.cardLabel}>COURIER INSTRUCTIONS</Text>
+              <TextInput
+                style={styles.instructionsInput}
+                value={local.courierInstructions}
+                onChangeText={v => set('courierInstructions', v)}
+                placeholder="Leave at the door, ring twice..."
+                placeholderTextColor="#9CA3AF"
+                multiline
+                textAlignVertical="top"
+                selectionColor="#ff7a59"
+              />
+            </View>
+          </ScrollView>
+
+          <Pressable style={styles.doneBtn} onPress={onClose}>
+            <Text style={styles.doneBtnText}>Done</Text>
+          </Pressable>
         </View>
-      </SafeAreaView>
+      </View>
     </Modal>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
+  overlay: {
     flex: 1,
-    backgroundColor: '#F7F9FB',
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(25, 28, 30, 0.18)',
   },
-  header: {
-    backgroundColor: '#FFFFFF',
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  sheet: {
+    height: '82%',
     paddingTop: 12,
-    paddingBottom: 16,
-    paddingHorizontal: 20,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 5,
+    shadowOffset: { width: 0, height: -20 },
+    shadowOpacity: 0.12,
+    shadowRadius: 40,
+    elevation: 16,
   },
-  headerDragHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#D1D5DB',
-    borderRadius: 9999,
-    alignSelf: 'center',
-    marginBottom: 12,
+  handleWrap: {
+    alignItems: 'center',
+    paddingBottom: 24,
   },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 16,
-    lineHeight: 33,
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  tab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 9999,
-  },
-  tabActive: {
-    backgroundColor: '#FFF2EE',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 122, 89, 0.2)',
-  },
-  tabInactive: {
-    backgroundColor: '#F3F4F6',
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  tabTextActive: {
-    color: '#FF7A59',
-  },
-  tabTextInactive: {
-    color: '#4B5563',
-  },
-  content: {
-    flex: 1,
-  },
-  contentInner: {
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-  },
-  detailsContainer: {
-    gap: 16,
-  },
-  addressCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.02,
-    shadowRadius: 2,
-    elevation: 1,
+  handle: {
+    width: 48,
+    height: 6,
+    borderRadius: 999,
+    opacity: 0.6,
+    backgroundColor: '#e0e3e5',
   },
   addressHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 20,
   },
-  addressHeaderText: {
+  addressIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 218, 210, 0.40)',
+  },
+  addressTitleWrap: {
     flex: 1,
   },
   addressLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 3,
-  },
-  addressMain: {
-    fontSize: 18,
+    color: 'rgba(88, 66, 60, 0.60)',
+    fontSize: 10,
+    lineHeight: 15,
+    letterSpacing: 0.5,
     fontWeight: '700',
-    color: '#111827',
-    lineHeight: 22.5,
+    textTransform: 'uppercase',
   },
-  addressCity: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#6B7280',
-    lineHeight: 24,
-    marginTop: 2,
+  addressTitle: {
+    color: '#191c1e',
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: '800',
   },
-  chevronButton: {
-    width: 32,
-    height: 32,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 9999,
+  changeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#f2f4f6',
   },
-  chevronIcon: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    fontWeight: '900',
-  },
-  addressDetailsFields: {
-    gap: 12,
-    marginBottom: 16,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  detailFieldHalf: {
+  scrollArea: {
     flex: 1,
   },
-  detailLabel: {
-    fontSize: 11,
-    fontWeight: '400',
-    color: '#6B7280',
-    lineHeight: 16.5,
-    marginBottom: 6,
-  },
-  detailInput: {
-    minHeight: 40,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(223, 192, 184, 0.3)',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    color: '#111827',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  detailsSection: {
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-    gap: 12,
-  },
-  detailItem: {
+  mapRow: {
+    padding: 16,
+    borderRadius: 6,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    backgroundColor: '#f2f4f6',
+    marginBottom: 12,
   },
-  iconCircle: {
-    width: 32,
-    height: 32,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 9999,
+  mapRowLeft: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+    gap: 12,
   },
-  icon: {
-    fontSize: 16,
-    color: '#64748B',
-    fontWeight: '700',
-  },
-  detailItemText: {
-    flex: 1,
+  mapRowText: {
+    color: '#191c1e',
     fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
     lineHeight: 20,
+    fontWeight: '600',
   },
-  phoneInput: {
-    padding: 0,
-    margin: 0,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
   },
-  chevronSmall: {
-    fontSize: 12,
-    color: '#D1D5DB',
-    fontWeight: '900',
+  card: {
+    width: '47.5%',
+    minHeight: 84,
+    padding: 16,
+    borderRadius: 6,
+    gap: 4,
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
-  placeholderContent: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 200,
-  },
-  placeholderText: {
-    fontSize: 16,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  footer: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  doneButton: {
-    backgroundColor: '#FF7A59',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#FF7A59',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  doneButtonText: {
-    fontSize: 16,
+  cardLabel: {
+    color: 'rgba(88, 66, 60, 0.60)',
+    fontSize: 10,
+    lineHeight: 15,
+    letterSpacing: 0.5,
     fontWeight: '700',
-    color: '#FFFFFF',
+  },
+  cardInput: {
+    padding: 0,
+    color: '#191c1e',
+    fontSize: 16,
     lineHeight: 24,
+    fontWeight: '700',
+  },
+  instructionsCard: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 6,
+    gap: 8,
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 24,
+  },
+  instructionsInput: {
+    padding: 0,
+    color: '#191c1e',
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '500',
+    minHeight: 64,
+  },
+  doneBtn: {
+    marginTop: 12,
+    paddingVertical: 16,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#e6e8ea',
+  },
+  doneBtnText: {
+    color: '#191c1e',
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: '700',
   },
 })

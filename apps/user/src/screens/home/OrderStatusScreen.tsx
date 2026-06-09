@@ -23,10 +23,11 @@ import MapView, {
   PROVIDER_GOOGLE,
 } from 'react-native-maps'
 import * as Location from 'expo-location'
+import { googleGeocode } from '../../data/googleMapsApi'
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { calculateRoute, decodeRoutePolyline, RoutePoint } from '../../data/routesApi'
-import { getUserOrder, mapOrderStatusToTrackingState, type TrackingState } from '../../data/ordersApi'
+import { getUserOrder, mapOrderStatusToTrackingState, type TrackingState, updateOrderAddress, type UserOrderAddress } from '../../data/ordersApi'
 import { getOrderAssignment, getCourierLocation } from '../../data/logisticsApi'
 
 type OrderStatusScreenProps = {
@@ -80,8 +81,8 @@ const progressSteps = [
 ] as const
 
 const addressFields = [
+  { key: 'house', label: 'HOUSE' },
   { key: 'entrance', label: 'ENTRANCE' },
-  { key: 'floor', label: 'FLOOR' },
   { key: 'apartment', label: 'APARTMENT' },
   { key: 'doorCode', label: 'DOOR CODE' },
 ] as const
@@ -230,6 +231,8 @@ export function OrderStatusScreen({
   const [customerCoords, setCustomerCoords] = useState(customerLocation)
   const [milestoneIndex, setMilestoneIndex] = useState(1)
   const [isAddressModalVisible, setIsAddressModalVisible] = useState(false)
+  const isAddressModalVisibleRef = useRef(false)
+  isAddressModalVisibleRef.current = isAddressModalVisible
   const [isOrderDetailsVisible, setIsOrderDetailsVisible] = useState(false)
   const [isCourierChatVisible, setIsCourierChatVisible] = useState(false)
   const [isDeliveryCompleteVisible, setIsDeliveryCompleteVisible] = useState(false)
@@ -237,11 +240,61 @@ export function OrderStatusScreen({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([...initialCourierMessages])
   const [selectedRating, setSelectedRating] = useState(0)
   const [addressDetails, setAddressDetails] = useState({
-    entrance: 'Main',
-    floor: '4',
-    apartment: '4B',
-    doorCode: '1234',
+    house: '',
+    entrance: '',
+    apartment: '',
+    doorCode: '',
   })
+  const [deliveryAddress, setDeliveryAddress] = useState<UserOrderAddress | null>(null)
+
+  const openAddressModal = () => {
+    if (deliveryAddress) {
+      setAddressDetails(prev => ({
+        house: deliveryAddress.house || '',
+        entrance: deliveryAddress.entrance || '',
+        apartment: deliveryAddress.apartment || '',
+        doorCode: prev.doorCode,
+      }))
+    }
+    setIsAddressModalVisible(true)
+  }
+
+  const handleSaveAddress = async () => {
+    if (!accessToken || !orderId) {
+      setIsAddressModalVisible(false)
+      Alert.alert('Success', 'Address updated successfully (mock mode)')
+      return
+    }
+
+    try {
+      const res = await updateOrderAddress(accessToken, orderId, {
+        house: addressDetails.house,
+        entrance: addressDetails.entrance,
+        apartment: addressDetails.apartment,
+      })
+
+      if (res.ok) {
+        if (res.data.success) {
+          setIsAddressModalVisible(false)
+          Alert.alert('Success', 'Address updated successfully')
+          setDeliveryAddress(prev => prev ? {
+            ...prev,
+            house: addressDetails.house,
+            entrance: addressDetails.entrance,
+            apartment: addressDetails.apartment,
+          } : null)
+        } else {
+          const errorMsg = res.data.error?.message || 'Failed to update address'
+          Alert.alert('Error', errorMsg)
+        }
+      } else {
+        const errorMsg = res.error?.message || 'Failed to update address'
+        Alert.alert('Error', errorMsg)
+      }
+    } catch (err) {
+      Alert.alert('Error', 'An unexpected error occurred while updating address')
+    }
+  }
 
   const mapRef = useRef<MapView | null>(null)
   const chatScrollRef = useRef<ScrollView | null>(null)
@@ -317,12 +370,12 @@ export function OrderStatusScreen({
   // Delivery address marker (destination pin) - separate from client GPS
   const showDeliveryMarker = !isRealMode
     ? true
-    : hasRealDeliveryCoords && ['IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING', 'DELIVERED'].includes(upperStatus)
+    : hasRealDeliveryCoords
   const showPickupMarker = !isRealMode
-  // Route: courier → client GPS (if available) or courier → delivery address
+  // Route: courier → delivery address (only shown after pickup)
   const showRoute = !isRealMode
     ? true
-    : realCourierLocation !== null && (clientGpsCoords !== null || hasRealDeliveryCoords) && inTransitStatuses.includes(upperStatus)
+    : (realCourierLocation !== null || restaurantCoords !== null) && hasRealDeliveryCoords && ['PICKED_UP', 'IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING'].includes(upperStatus)
 
   const completedStepCount = useMemo(() => {
     if (trackingState.isTerminal) {
@@ -512,6 +565,32 @@ export function OrderStatusScreen({
     [accessToken, orderId, routeFitPadding],
   )
 
+  // Automatically fit map to relevant coordinates (Courier, Restaurant, Customer)
+  useEffect(() => {
+    if (!accessToken || !orderId) return
+    if (!mapRef.current) return
+
+    const upperStatus = orderStatus.toUpperCase()
+    const withCourier = ['ASSIGNED', 'ACCEPTED', 'PREPARING', 'READY', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING'].includes(upperStatus)
+
+    const coordsToFit = [
+      withCourier && realCourierLocation ? realCourierLocation : restaurantCoords,
+      customerCoords,
+      clientGpsCoords,
+    ].filter((c): c is { latitude: number; longitude: number } => c !== null && c !== undefined)
+
+    if (coordsToFit.length === 0) return
+
+    const timer = setTimeout(() => {
+      mapRef.current?.fitToCoordinates(coordsToFit, {
+        edgePadding: routeFitPadding,
+        animated: true,
+      })
+    }, 400)
+
+    return () => clearTimeout(timer)
+  }, [accessToken, orderId, orderStatus, realCourierLocation, restaurantCoords, customerCoords, clientGpsCoords, routeFitPadding])
+
   useEffect(() => {
     screenOpacity.setValue(0)
     screenTranslateY.setValue(18)
@@ -612,6 +691,22 @@ export function OrderStatusScreen({
     }
   }, [accessToken, orderId])
 
+  const lastRouteCalculatedCourierLocationRef = useRef<{ latitude: number; longitude: number } | null>(null)
+  const lastRouteCalculatedDestinationRef = useRef<{ latitude: number; longitude: number } | null>(null)
+
+  // Helper distance function
+  const getCoordinatesDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371e3 // meters
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLon = (lon2 - lon1) * Math.PI / 180
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return R * c
+  }
+
   // Mock-mode route: restaurant → customer (straight/OSRM curve for demo)
   useEffect(() => {
     if (accessToken && orderId) return
@@ -626,7 +721,10 @@ export function OrderStatusScreen({
 
       if (!isMounted) return
 
-      const decodedCoordinates = decodeRoutePolyline(response.encodedPolyline)
+      const decodedCoordinates = decodeRoutePolyline(
+        response.encodedPolyline,
+        { lat: restaurantCoords.latitude, lng: restaurantCoords.longitude }
+      )
       const normalizedRoute =
         decodedCoordinates.length >= 2
           ? decodedCoordinates
@@ -645,35 +743,68 @@ export function OrderStatusScreen({
     }
   }, [accessToken, orderId, fitRouteToMap, restaurantCoords, customerCoords])
 
-  // Real-mode route: courier → client GPS (preferred) or delivery address, recalculates on courier/client move
+  // Real-mode route: courier → client delivery address, recalculates on courier move (only after picked up)
   useEffect(() => {
     if (!accessToken || !orderId) return
-    if (!['IN_TRANSIT', 'DELIVERY_CONFIRMATION_PENDING'].includes(orderStatus.toUpperCase())) {
+    const activeStatuses = [
+      'PICKED_UP',
+      'IN_TRANSIT',
+      'DELIVERY_CONFIRMATION_PENDING',
+    ]
+    const status = orderStatus.toUpperCase()
+    if (!activeStatuses.includes(status)) {
       setRouteCoordinates([])
+      lastRouteCalculatedCourierLocationRef.current = null
+      lastRouteCalculatedDestinationRef.current = null
       return
     }
-    if (!realCourierLocation) return
-    // Prefer routing to client's real GPS, fall back to delivery address
-    const destination = clientGpsCoords ?? (hasRealDeliveryCoords ? customerCoords : null)
-    if (!destination) return
+
+    const origin = realCourierLocation ?? restaurantCoords
+    const destination = customerCoords
+
+    if (!origin || !destination) return
+
+    const destinationChanged =
+      !lastRouteCalculatedDestinationRef.current ||
+      lastRouteCalculatedDestinationRef.current.latitude !== destination.latitude ||
+      lastRouteCalculatedDestinationRef.current.longitude !== destination.longitude
+
+    // Throttle calculation: if courier has moved less than 100 meters and destination hasn't changed, do not recalculate route
+    if (
+      !destinationChanged &&
+      lastRouteCalculatedCourierLocationRef.current &&
+      getCoordinatesDistance(
+        lastRouteCalculatedCourierLocationRef.current.latitude,
+        lastRouteCalculatedCourierLocationRef.current.longitude,
+        origin.latitude,
+        origin.longitude
+      ) < 100
+    ) {
+      return
+    }
 
     let isMounted = true
 
     const recalculate = async () => {
       try {
         const response = await calculateRoute(
-          { lat: realCourierLocation.latitude, lng: realCourierLocation.longitude },
+          { lat: origin.latitude, lng: origin.longitude },
           { lat: destination.latitude, lng: destination.longitude },
         )
         if (!isMounted) return
 
-        const decoded = decodeRoutePolyline(response.encodedPolyline)
-        const route = decoded.length >= 2 ? decoded : [realCourierLocation, destination]
+        const decoded = decodeRoutePolyline(
+          response.encodedPolyline,
+          { lat: origin.latitude, lng: origin.longitude }
+        )
+        const route = decoded.length >= 2 ? decoded : [origin, destination]
 
         setDistanceMeters(response.distanceMeters)
         setDurationSeconds(response.durationSeconds)
         setRouteCoordinates(route)
         fitRouteToMap(route)
+        lastRouteCalculatedCourierLocationRef.current = { latitude: origin.latitude, longitude: origin.longitude }
+        lastRouteCalculatedDestinationRef.current = { latitude: destination.latitude, longitude: destination.longitude }
       } catch {
         // fail silently — keep previous route
       }
@@ -684,7 +815,15 @@ export function OrderStatusScreen({
     return () => {
       isMounted = false
     }
-  }, [accessToken, orderId, orderStatus, realCourierLocation, clientGpsCoords, hasRealDeliveryCoords, customerCoords, fitRouteToMap])
+  }, [
+    accessToken,
+    orderId,
+    orderStatus,
+    realCourierLocation,
+    restaurantCoords,
+    customerCoords,
+    fitRouteToMap,
+  ])
 
   // 1. Simulation timer effect for mock ordering (without backend credentials)
   useEffect(() => {
@@ -833,8 +972,8 @@ export function OrderStatusScreen({
         } else if (latestOrder.pickupAddress?.street) {
           try {
             const q = [latestOrder.pickupAddress.street, latestOrder.pickupAddress.house, latestOrder.pickupAddress.city, 'Kazakhstan'].filter(Boolean).join(', ')
-            const res = await Location.geocodeAsync(q)
-            if (res[0] && isActive) setRestaurantCoords({ latitude: res[0].latitude, longitude: res[0].longitude })
+            const res = await googleGeocode(q)
+            if (res && isActive) setRestaurantCoords(res)
           } catch {}
         }
         if (latestOrder.deliveryAddress?.latitude && latestOrder.deliveryAddress?.longitude) {
@@ -848,12 +987,30 @@ export function OrderStatusScreen({
         } else if (latestOrder.deliveryAddress?.street) {
           try {
             const q = [latestOrder.deliveryAddress.street, latestOrder.deliveryAddress.house, latestOrder.deliveryAddress.city, 'Kazakhstan'].filter(Boolean).join(', ')
-            const res = await Location.geocodeAsync(q)
-            if (res[0] && isActive) {
-              setCustomerCoords({ latitude: res[0].latitude, longitude: res[0].longitude })
+            const res = await googleGeocode(q)
+            if (res && isActive) {
+              setCustomerCoords(res)
               setHasRealDeliveryCoords(true)
             }
           } catch {}
+        }
+
+        if (latestOrder.deliveryAddress) {
+          setDeliveryAddress(latestOrder.deliveryAddress)
+          setAddressDetails(prev => {
+            const hs = latestOrder.deliveryAddress?.house || ''
+            const ent = latestOrder.deliveryAddress?.entrance || ''
+            const apt = latestOrder.deliveryAddress?.apartment || ''
+            if (!isAddressModalVisibleRef.current && (prev.house !== hs || prev.entrance !== ent || prev.apartment !== apt)) {
+              return {
+                house: hs,
+                entrance: ent,
+                apartment: apt,
+                doorCode: prev.doorCode
+              }
+            }
+            return prev
+          })
         }
 
         if (latestOrder.deliveryConfirmationCode) {
@@ -1240,10 +1397,12 @@ export function OrderStatusScreen({
 
             <View style={styles.addressTitleWrap}>
               <Text allowFontScaling={false} style={styles.addressTitle}>
-                Home
+                {deliveryAddress?.type === 'COMPANY' ? 'Office' : 'Home'}
               </Text>
               <Text allowFontScaling={false} style={styles.addressSubtitle}>
-                123 Breeze Way, Apt 4B{'\n'}New York, NY 10001
+                {deliveryAddress?.street
+                  ? `${deliveryAddress.street}${deliveryAddress.house ? `, ${deliveryAddress.house}` : ''}${deliveryAddress.entrance ? `, Entrance ${deliveryAddress.entrance}` : ''}${deliveryAddress.floor ? `, Floor ${deliveryAddress.floor}` : ''}${deliveryAddress.apartment ? `, Apt ${deliveryAddress.apartment}` : ''}${deliveryAddress.city ? `\n${deliveryAddress.city}` : ''}`
+                  : '123 Breeze Way, Apt 4B\nNew York, NY 10001'}
               </Text>
             </View>
           </View>
@@ -1287,11 +1446,11 @@ export function OrderStatusScreen({
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => setIsAddressModalVisible(false)}
+            onPress={handleSaveAddress}
             style={styles.addressCloseButton}
           >
             <Text allowFontScaling={false} style={styles.addressCloseText}>
-              Close
+              Save Address
             </Text>
           </Pressable>
         </View>
@@ -1508,7 +1667,9 @@ export function OrderStatusScreen({
             </View>
 
             <Text allowFontScaling={false} style={styles.detailsDeliveredTo}>
-              Delivered to: 123 Main St, Apt 4B
+              Delivered to: {deliveryAddress
+                ? `${deliveryAddress.street || ''}${deliveryAddress.house ? `, ${deliveryAddress.house}` : ''}${deliveryAddress.entrance ? `, Entrance ${deliveryAddress.entrance}` : ''}${deliveryAddress.floor ? `, Floor ${deliveryAddress.floor}` : ''}${deliveryAddress.apartment ? `, Apt ${deliveryAddress.apartment}` : ''}`
+                : '123 Main St, Apt 4B'}
             </Text>
           </View>
 
@@ -1882,7 +2043,7 @@ export function OrderStatusScreen({
             setIsCollapsed(true)
           }
         }}
-        provider={Platform.OS === 'ios' && hasGoogleMapsKey ? PROVIDER_GOOGLE : undefined}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         showsCompass={false}
         showsUserLocation={false}
         showsMyLocationButton={false}
@@ -2079,12 +2240,21 @@ export function OrderStatusScreen({
                 </View>
               </View>
 
-              {trackingState.showConfirmationCode && deliveryCode ? (
-                <View style={styles.codeCard}>
-                  <Text style={styles.codeLabel}>Delivery confirmation code</Text>
-                  <Text style={styles.codeValue}>{deliveryCode}</Text>
-                  <Text style={styles.codeSubtitle}>Share this code with your courier</Text>
-                </View>
+              {trackingState.showConfirmationCode ? (
+                deliveryCode ? (
+                  <View style={styles.codeCard}>
+                    <Text style={styles.codeLabel}>Delivery confirmation code</Text>
+                    <Text style={styles.codeValue}>{deliveryCode}</Text>
+                    <Text style={styles.codeSubtitle}>Share this code with your courier</Text>
+                  </View>
+                ) : (
+                  <View style={styles.codeCardExpired}>
+                    <Text style={styles.codeExpiredLabel}>Код истёк</Text>
+                    <Text style={styles.codeExpiredHint}>
+                      Попросите курьера отправить код повторно
+                    </Text>
+                  </View>
+                )
               ) : null}
 
               <View style={styles.quickActions}>
@@ -2103,7 +2273,7 @@ export function OrderStatusScreen({
 
                 <Pressable
                   accessibilityRole="button"
-                  onPress={() => setIsAddressModalVisible(true)}
+                  onPress={openAddressModal}
                   style={styles.quickAction}
                 >
                   <View style={[styles.quickIconCircle, styles.quickIconAddress]}>
@@ -2235,6 +2405,31 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginTop: 4,
     textAlign: 'center',
+  },
+  codeCardExpired: {
+    borderRadius: 20,
+    backgroundColor: '#FFF3EE',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 57, 30, 0.3)',
+    alignItems: 'center',
+  },
+  codeExpiredLabel: {
+    color: '#A7391E',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  codeExpiredHint: {
+    color: '#A7391E',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '500',
+    marginTop: 4,
+    textAlign: 'center',
+    opacity: 0.8,
   },
   pushBanner: {
     position: 'absolute',

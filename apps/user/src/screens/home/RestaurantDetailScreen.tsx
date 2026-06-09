@@ -29,8 +29,12 @@ type RestaurantDetailScreenProps = {
     restaurantName: string
     total: number
     items: MockFoodCheckoutItem[]
+    serviceType: 'STANDARD' | 'SCHEDULED' | 'EXPRESS'
+    scheduleTime?: string
   }) => Promise<UserOrder>
   onBackPress?: () => void
+  deliveryAddress?: string
+  onAddressEditPress?: () => void
 }
 
 type MenuItem = {
@@ -139,6 +143,8 @@ export function RestaurantDetailScreen({
   onClearCart,
   onFoodOrderPlaced,
   onBackPress,
+  deliveryAddress,
+  onAddressEditPress,
 }: RestaurantDetailScreenProps) {
   const insets = useSafeAreaInsets()
   const [currentScreen, setCurrentScreen] = useState<'menu' | 'cart' | 'accepting' | 'status'>(
@@ -239,23 +245,33 @@ export function RestaurantDetailScreen({
     }
   }, [cartSummary.count, currentScreen])
 
-  const handleCheckout = async () => {
+  const handleCheckout = async (serviceType: 'STANDARD' | 'SCHEDULED' | 'EXPRESS', scheduleTime?: string) => {
+    const activeDeliveryFee = cartSummary.count > 0
+      ? serviceType === 'EXPRESS'
+        ? 3.5
+        : serviceType === 'SCHEDULED'
+        ? 1.5
+        : 2
+      : 0
+    const activeTotal = Math.max(0, cartSummary.total + activeDeliveryFee - discount)
     try {
       const order = await onFoodOrderPlaced?.({
         restaurantName: 'The Artisan Crust',
-        total: checkoutTotal,
+        total: activeTotal,
         items: selectedCartItems.map(item => ({
           id: item.id,
           name: item.name,
           price: item.price,
           quantity: item.quantity,
         })),
+        serviceType,
+        scheduleTime,
       })
       if (order) {
         setPlacedOrder({
           orderId: order.orderId,
           restaurantName: 'The Artisan Crust',
-          total: checkoutTotal,
+          total: activeTotal,
           orderNumber: order.orderId.slice(-6).toUpperCase(),
           items: selectedCartItems,
         })
@@ -315,6 +331,8 @@ export function RestaurantDetailScreen({
         onDecreaseItem={onRemoveItem}
         onIncreaseItem={onAddItem}
         onCheckout={handleCheckout}
+        deliveryAddress={deliveryAddress}
+        onAddressEditPress={onAddressEditPress}
       />
     )
   }

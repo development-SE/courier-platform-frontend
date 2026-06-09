@@ -77,6 +77,8 @@ export type CreateParcelOrderParams = {
   serviceType?: 'STANDARD' | 'EXPRESS' | 'SCHEDULED'
   comment?: string
   packageDescription?: string
+  parcelSize?: 'SMALL' | 'MEDIUM' | 'LARGE'
+  totalPrice?: number
   pickupLat?: number
   pickupLon?: number
   deliveryLat?: number
@@ -120,13 +122,14 @@ export async function createParcelOrder(accessToken: string, params: CreateParce
     },
     json: {
       serviceType: params.serviceType ?? 'STANDARD',
+      parcelSize: params.parcelSize,
       comment: params.comment?.trim() ?? '',
       items: [
         {
           itemId: '',
           name: params.packageDescription?.trim() || 'Parcel',
           quantity: 1,
-          price: null,
+          price: params.totalPrice ?? null,
         },
       ],
       pickupAddress: {
@@ -166,9 +169,17 @@ export type CreateFoodOrderParams = {
   pickupAddress?: string
   pickupLat?: number
   pickupLon?: number
-  deliveryAddress?: string
+  deliveryCity?: string
+  deliveryStreet?: string
+  deliveryHouse?: string
+  deliveryEntrance?: string
+  deliveryFloor?: string
+  deliveryApartment?: string
   deliveryLat?: number
   deliveryLon?: number
+  serviceType?: 'STANDARD' | 'SCHEDULED' | 'EXPRESS'
+  recipientName?: string
+  recipientPhone?: string
 }
 
 export async function createFoodOrder(accessToken: string, params: CreateFoodOrderParams) {
@@ -178,7 +189,7 @@ export async function createFoodOrder(accessToken: string, params: CreateFoodOrd
       Authorization: `Bearer ${accessToken}`,
     },
     json: {
-      serviceType: 'STANDARD',
+      serviceType: params.serviceType ?? 'STANDARD',
       comment: `Food order from ${params.restaurantName}`,
       items: params.items.map(item => ({
         itemId: item.id,
@@ -196,16 +207,19 @@ export async function createFoodOrder(accessToken: string, params: CreateFoodOrd
       },
       deliveryAddress: {
         type: 'USER',
-        city: 'Astana',
-        street: params.deliveryAddress?.trim() || 'Uly Dala Ave, 8',
-        house: '8',
+        city: params.deliveryCity?.trim() || 'Astana',
+        street: params.deliveryStreet?.trim() || 'Uly Dala Ave',
+        house: params.deliveryHouse?.trim() || '8',
+        entrance: params.deliveryEntrance?.trim() || '',
+        floor: params.deliveryFloor?.trim() || '',
+        apartment: params.deliveryApartment?.trim() || '',
         latitude: params.deliveryLat ?? 51.1350,
         longitude: params.deliveryLon ?? 71.4450,
       },
       recipientInfo: {
-        name: 'Client',
+        name: params.recipientName?.trim() || 'Client',
         surname: null,
-        phone: '+7 777 000 0000',
+        phone: params.recipientPhone?.trim() || '+7 777 000 0000',
       },
       pickupInfo: {
         name: params.restaurantName,
@@ -382,5 +396,26 @@ export async function cancelOrder(accessToken: string, orderId: string) {
     json: {
       status: 'CANCELLED',
     },
+  })
+}
+
+export type UpdateOrderAddressParams = {
+  house?: string
+  apartment?: string
+  entrance?: string
+  floor?: string
+}
+
+export async function updateOrderAddress(
+  accessToken: string,
+  orderId: string,
+  params: UpdateOrderAddressParams
+) {
+  return apiRequest<ApiResponse<any>>(`/api/v1/orders/${orderId}/delivery-address`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    json: params,
   })
 }

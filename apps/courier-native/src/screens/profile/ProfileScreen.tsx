@@ -173,12 +173,12 @@ export function ProfileScreen() {
               {TRANSPORT_OPTIONS.map(opt => (
                 <Pressable
                   key={opt}
-                  style={[styles.transportChip, editTransport === opt && styles.transportChipSelected]}
+                  style={[styles.transportChip, editTransport === opt ? styles.transportChipSelected : undefined]}
                   onPress={() => setEditTransport(opt)}
                 >
                   <AppText
                     variant="label"
-                    style={[styles.transportChipText, editTransport === opt && styles.transportChipTextSelected]}
+                    style={[styles.transportChipText, editTransport === opt ? styles.transportChipTextSelected : undefined]}
                   >
                     {opt}
                   </AppText>
