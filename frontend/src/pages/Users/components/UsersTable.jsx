@@ -1,4 +1,4 @@
-﻿import './usersTable.css'
+import './usersTable.css'
 
 export const UsersTable = ({
   users,

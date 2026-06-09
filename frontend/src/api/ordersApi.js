@@ -50,6 +50,7 @@ const toUiOrder = (order) => ({
   recipientPhone:   order.recipientInfo?.phone || '—',
   comments:         order.comment || '',
   deliveryType:     '—',   // not in backend yet
+  deliveryFee:      order.deliveryFee || 0,
 })
 
 // "NEW" → "New", "IN_TRANSIT" → "InTransit"
@@ -62,7 +63,7 @@ const toPascalStatus = (status) => {
 }
 
 export const ordersApi = {
-  async list({ search = '', dateFrom = '', dateTo = '', page = 1, pageSize = 10 } = {}) {
+  async list({ search = '', dateFrom = '', dateTo = '', status = '', companyId = '', page = 1, pageSize = 10 } = {}) {
     const safePageSize = Math.min(Math.max(1, pageSize), MAX_BACKEND_PAGE_SIZE)
     const params = new URLSearchParams()
     params.append('page', page)
@@ -70,12 +71,23 @@ export const ordersApi = {
     params.append('sortBy', 'createdAt')
     params.append('sortDesc', 'true')
 
+    if (companyId) params.append('companyId', companyId)
+    if (status) params.append('status', status.toUpperCase())
+    if (dateFrom) {
+      const isoFrom = dateFrom.includes('T') ? dateFrom : new Date(`${dateFrom}T00:00:00`).toISOString()
+      params.append('fromDate', isoFrom)
+    }
+    if (dateTo) {
+      const isoTo = dateTo.includes('T') ? dateTo : new Date(`${dateTo}T23:59:59`).toISOString()
+      params.append('toDate', isoTo)
+    }
+
     const response = await api.get(`/orders?${params.toString()}`, token())
     const data = unwrap(response)
 
     let items = (data?.orders || []).map(toUiOrder)
 
-    // client-side search & date filter (until backend supports it)
+    // client-side search (until backend supports it)
     if (search) {
       const q = search.toLowerCase()
       items = items.filter(o =>
@@ -84,14 +96,6 @@ export const ordersApi = {
         o.status.toLowerCase().includes(q)
       )
     }
-    if (dateFrom) {
-      const from = new Date(`${dateFrom}T00:00:00`)
-      items = items.filter(o => new Date(o.createdAt) >= from)
-    }
-    if (dateTo) {
-      const to = new Date(`${dateTo}T23:59:59`)
-      items = items.filter(o => new Date(o.createdAt) <= to)
-    }
 
     return {
       items,
@@ -99,7 +103,7 @@ export const ordersApi = {
     }
   },
 
-  async listAll({ search = '', dateFrom = '', dateTo = '' } = {}) {
+  async listAll({ search = '', dateFrom = '', dateTo = '', status = '', companyId = '' } = {}) {
     let page = 1
     let total = 0
     let allItems = []
@@ -109,6 +113,8 @@ export const ordersApi = {
         search,
         dateFrom,
         dateTo,
+        status,
+        companyId,
         page,
         pageSize: MAX_BACKEND_PAGE_SIZE,
       })

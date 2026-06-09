@@ -43,7 +43,8 @@ export const auth = {
     const activeSession = session || this.getSession()
     if (!activeSession) return '/sign-in'
 
-    switch (activeSession.role) {
+    const role = activeSession.role?.toUpperCase()
+    switch (role) {
       case 'ADMIN':
       case 'SUPER_ADMIN':
         return '/orders'
@@ -54,6 +55,7 @@ export const auth = {
         return '/my-company'
       case 'USER':
       case 'CLIENT':
+      case 'COURIER':
         return '/user-home'
       default:
         return '/my-company'
@@ -63,12 +65,23 @@ export const auth = {
   async signIn(email, password) {
     const data = await api.post('/auth/login', { email, password })
     const decoded = this.decodeToken(data.data.accessToken)
+    
+    // Fetch actual user profile name
+    let profile = null
+    try {
+      profile = await api.get('/users/me', data.data.accessToken)
+    } catch (err) {
+      console.error('Failed to fetch user profile:', err)
+    }
+
     const session = {
       accessToken: data.data.accessToken,
       refreshToken: data.data.refreshToken,
       role: data.data.role,
       userId: decoded?.sub || null,
       companyId: decoded?.companyId || null,
+      email: decoded?.username || null,
+      name: profile ? `${profile.firstName || ''} ${profile.lastName || ''}`.trim() : null
     }
     localStorage.setItem(SESSION_KEY, JSON.stringify(session))
     return session

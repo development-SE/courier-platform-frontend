@@ -31,8 +31,16 @@ const RequireAuth = ({ children, allowedRoles = [] }) => {
     return <Navigate to="/sign-in" replace state={{ from: location }} />
   }
 
-  if (allowedRoles.length > 0 && !allowedRoles.includes(session.role)) {
-    return <Navigate to={auth.getDefaultRoute(session)} replace />
+  const role = session.role?.toUpperCase()
+
+  if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {
+    const defaultRoute = auth.getDefaultRoute(session)
+    if (defaultRoute === location.pathname) {
+      // Prevent infinite redirect loop if default route is also not allowed
+      auth.signOut() // Clear stale session
+      return <Navigate to="/sign-in" replace />
+    }
+    return <Navigate to={defaultRoute} replace />
   }
 
   return children
@@ -145,11 +153,11 @@ function App() {
           }
         />
 
-        {/* Users/Employees — Admin + Director */}
+        {/* Users/Employees — SuperAdmin, Admin, Director, Manager */}
         <Route
           path="/users"
           element={
-            <RequireAuth allowedRoles={[...ADMIN_ROLES, ...DIRECTOR_ROLES]}>
+            <RequireAuth allowedRoles={['ADMIN', 'SUPER_ADMIN', 'DIRECTOR', 'MANAGER']}>
               <PartnerLayout currentPage="users">
                 <UsersPage />
               </PartnerLayout>
@@ -161,7 +169,7 @@ function App() {
         <Route
           path="/clients"
           element={
-            <RequireAuth allowedRoles={[...ADMIN_ROLES, ...DIRECTOR_ROLES, 'MANAGER']}>
+            <RequireAuth allowedRoles={ADMIN_ROLES}>
               <PartnerLayout currentPage="clients">
                 <ClientPage />
               </PartnerLayout>
@@ -172,7 +180,7 @@ function App() {
         <Route
           path="/companies"
           element={
-            <RequireAuth allowedRoles={ADMIN_ROLES}>
+            <RequireAuth allowedRoles={['ADMIN', 'SUPER_ADMIN']}>
               <PartnerLayout currentPage="companies">
                 <CompaniesPage />
               </PartnerLayout>

@@ -8,8 +8,8 @@ import './auth.css'
 export const SignInPage = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  const [email, setEmail] = useState('partner@example.com')
-  const [password, setPassword] = useState('123456')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 

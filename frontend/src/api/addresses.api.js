@@ -25,7 +25,7 @@ export const addressesApi = {
       params.append('page', 1)
       params.append('size', 1000) // fetch all for local sorting/merging
       try {
-        const data = await api.get(`/users/addresses?${params.toString()}`, token)
+        const data = await api.get(`/users/me/addresses?${params.toString()}`, token)
         return (data.content || []).map(item => ({ 
           ...item, 
           type: 'user',
@@ -36,11 +36,16 @@ export const addressesApi = {
       }
     }
 
+    const session = auth.getSession()
+    const role = session?.role?.toUpperCase()
+    const isCompanyScoped = role === 'DIRECTOR' || role === 'PARTNER' || role === 'MANAGER'
+    const resolvedType = isCompanyScoped ? 'company' : type
+
     let mergedItems = []
 
-    if (type === 'company') {
+    if (resolvedType === 'company') {
       mergedItems = await fetchCompanies()
-    } else if (type === 'user') {
+    } else if (resolvedType === 'user') {
       mergedItems = await fetchUsers()
     } else {
       // Fetch both for 'All'

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { ordersApi } from '../../api/ordersApi'
 import { assignmentsApi } from '../../api/assignments.api'
 import { couriersApi } from '../../api/couriers.api'
+import { usersApi } from '../../api/users.api'
 import { auth } from '../../utils/auth'
 import './orderDetailsPage.css'
 
@@ -41,6 +42,11 @@ const normalizeStatus = (status) => {
     Assigned: 'assigned',
     InProgress: 'inProgress',
     Delivered: 'delivered',
+    New: 'created',
+    Accepted: 'processing',
+    Preparing: 'processing',
+    Ready: 'processing',
+    InTransit: 'inProgress',
   }
   return map[status] || 'created'
 }
@@ -64,14 +70,87 @@ export const OrderDetailsPage = () => {
   const [manualLoading, setManualLoading] = useState(false)
   const [manualErr, setManualErr] = useState('')
 
+  const [assignment, setAssignment] = useState(null)
+  const [courierProfile, setCourierProfile] = useState(null)
+  const [courierUser, setCourierUser] = useState(null)
+
+  const [showStatusModal, setShowStatusModal] = useState(false)
+  const [statusLoading, setStatusLoading] = useState(false)
+  const [statusErr, setStatusErr] = useState('')
+
   const session = auth.getSession()
   const isAdmin = session?.role === 'ADMIN' || session?.role === 'SUPER_ADMIN'
+
+  const loadCourierDetails = async (targetOrderId) => {
+    try {
+      const assignRes = await assignmentsApi.list({ orderId: targetOrderId })
+      const activeAssign = assignRes.items?.[0]
+      if (activeAssign && activeAssign.courierId) {
+        setAssignment(activeAssign)
+        const cId = activeAssign.courierId
+        
+        const [profileRes, usersRes] = await Promise.all([
+          couriersApi.getByUserId(cId).catch(() => null),
+          usersApi.listCouriers({ page: 1, pageSize: 1000 }).catch(() => ({ items: [] }))
+        ])
+        
+        setCourierProfile(profileRes)
+        const matchedUser = (usersRes.items || []).find(u => String(u.userId || u.id) === String(cId))
+        setCourierUser(matchedUser || null)
+      } else {
+        setAssignment(null)
+        setCourierProfile(null)
+        setCourierUser(null)
+      }
+    } catch (err) {
+      console.error("Error loading courier details:", err)
+    }
+  }
+
+  const handleUpdateStatus = async (newStatus) => {
+    setStatusLoading(true)
+    setStatusErr('')
+    try {
+      await ordersApi.updateStatus(orderId, newStatus)
+      setShowStatusModal(false)
+      const updated = await ordersApi.getById(orderId)
+      setOrder(updated)
+      await loadCourierDetails(orderId)
+    } catch (err) {
+      setStatusErr(err.message || 'Ошибка смены статуса')
+    } finally {
+      setStatusLoading(false)
+    }
+  }
+
+  const handleCancelOrder = async () => {
+    if (!window.confirm('Вы уверены, что хотите отменить этот заказ?')) return
+    try {
+      await ordersApi.updateStatus(orderId, 'CANCELLED')
+      const updated = await ordersApi.getById(orderId)
+      setOrder(updated)
+      await loadCourierDetails(orderId)
+    } catch (err) {
+      alert(err.message || 'Ошибка при отмене заказа')
+    }
+  }
 
   useEffect(() => {
     if (!orderId) return
     setDetailsLoading(true)
     ordersApi.getById(orderId)
-      .then(data => setOrder(data))
+      .then(data => {
+        setOrder(data)
+        const status = normalizeStatus(data.status)
+        const isAssigned = status === 'assigned' || status === 'inProgress' || status === 'delivered'
+        if (isAssigned) {
+          return loadCourierDetails(orderId)
+        } else {
+          setAssignment(null)
+          setCourierProfile(null)
+          setCourierUser(null)
+        }
+      })
       .catch(() => setOrder(null))
       .finally(() => setDetailsLoading(false))
   }, [orderId])
@@ -84,14 +163,23 @@ export const OrderDetailsPage = () => {
 
   const courierInfo = useMemo(() => {
     if (!order || !assigned) return null
+    const courierName = courierUser 
+      ? `${courierUser.firstName || ''} ${courierUser.lastName || ''}`.trim() || courierUser.email
+      : order.courierName || 'Courier not specified'
+      
+    const courierPhone = courierUser?.phone || order.recipientPhone || '+7 (700) 000-00-00'
+    const assignedTime = assignment?.assignedAt || order.createdAt
+    const courierIdStr = assignment?.courierId || order.courierId
+    
     return {
-      name: order.courierName || 'Courier not specified',
-      id: order.courierId ? `CCR-${order.courierId}` : 'CCR-0000',
-      phone: order.recipientPhone || '+7 (700) 000-00-00',
-      assignedTime: formatDateTime(order.createdAt),
+      name: courierName,
+      id: courierIdStr ? `CCR-${courierIdStr}` : 'CCR-0000',
+      phone: courierPhone,
+      assignedTime: formatDateTime(assignedTime),
       rating: 4.8,
+      transportType: courierProfile?.transportType || '—',
     }
-  }, [assigned, order])
+  }, [assigned, order, assignment, courierProfile, courierUser])
 
   const filteredCouriers = useMemo(() => {
     if (!courierSearch) return couriers
@@ -104,6 +192,30 @@ export const OrderDetailsPage = () => {
 
   const statusKey = normalizeStatus(order?.status)
 
+  const timelineSteps = useMemo(() => {
+    const isCancelled = order?.status === 'Cancelled'
+    if (!isCancelled) {
+      return STATUS_STEPS
+    }
+
+    const steps = [
+      { key: 'created', label: 'Order Created', by: 'Customer' }
+    ]
+
+    const wasAssigned = !!assignment
+    const wasProcessing = order.status === 'Processing' || order.status === 'Accepted' || order.status === 'Preparing' || order.status === 'Ready' || wasAssigned
+
+    if (wasProcessing) {
+      steps.push({ key: 'processing', label: 'Processing', by: 'Manager' })
+    }
+    if (wasAssigned) {
+      steps.push({ key: 'assigned', label: 'Assigned', by: '' })
+    }
+
+    steps.push({ key: 'cancelled', label: 'Cancelled', by: '' })
+    return steps
+  }, [order, assignment])
+
   const handleAutoAssign = async () => {
     setAutoLoading(true)
     setAutoMsg('')
@@ -113,6 +225,7 @@ export const OrderDetailsPage = () => {
       setAutoMsg('Курьер успешно назначен автоматически')
       const updated = await ordersApi.getById(orderId)
       setOrder(updated)
+      await loadCourierDetails(orderId)
     } catch (err) {
       setAutoErr(err.message || 'Ошибка при авто-назначении')
     } finally {
@@ -128,8 +241,21 @@ export const OrderDetailsPage = () => {
     setCourierSearch('')
     setCouriersLoading(true)
     try {
-      const data = await couriersApi.list({ page: 1, pageSize: 50 })
-      setCouriers(data.items)
+      const [profilesRes, usersRes] = await Promise.all([
+        couriersApi.list({ page: 1, pageSize: 50 }),
+        usersApi.listCouriers({ page: 1, pageSize: 1000 }).catch(() => ({ items: [] }))
+      ])
+      const usersById = new Map((usersRes.items || []).map(u => [String(u.userId || u.id), u]))
+      const enriched = (profilesRes.items || []).map(p => {
+        const u = usersById.get(String(p.id))
+        return {
+          ...p,
+          firstName: u?.firstName || '',
+          lastName: u?.lastName || '',
+          email: u?.email || '',
+        }
+      })
+      setCouriers(enriched)
     } catch {
       setCouriers([])
     } finally {
@@ -147,6 +273,7 @@ export const OrderDetailsPage = () => {
       setAutoMsg('Курьер назначен вручную')
       const updated = await ordersApi.getById(orderId)
       setOrder(updated)
+      await loadCourierDetails(orderId)
     } catch (err) {
       setManualErr(err.message || 'Ошибка при назначении')
     } finally {
@@ -188,8 +315,24 @@ export const OrderDetailsPage = () => {
           {assigned ? 'Assigned' : 'Available'}
         </div>
         <div className="order-actions">
-          <button type="button" className="btn-outline">Process/Edit</button>
-          <button type="button" className="btn-danger">Cancel Order</button>
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={() => {
+              setStatusErr('')
+              setShowStatusModal(true)
+            }}
+          >
+            Process/Edit
+          </button>
+          <button
+            type="button"
+            className="btn-danger"
+            onClick={handleCancelOrder}
+            disabled={order.status === 'Cancelled' || order.status === 'Delivered'}
+          >
+            Cancel Order
+          </button>
         </div>
       </div>
 
@@ -229,6 +372,10 @@ export const OrderDetailsPage = () => {
             <strong>{order.deliveryType || '—'}</strong>
           </div>
           <div className="info-row">
+            <span>Delivery Fee</span>
+            <strong className="paid">{order.deliveryFee ? `${order.deliveryFee} ₸` : '—'}</strong>
+          </div>
+          <div className="info-row">
             <span>Status</span>
             <strong className="paid">{order.status || 'New'}</strong>
           </div>
@@ -236,7 +383,13 @@ export const OrderDetailsPage = () => {
 
         <div className="details-card courier-card">
           <h3>Courier Information</h3>
-          {!assigned ? (
+          {order.status === 'Cancelled' ? (
+            <div className="courier-pending">
+              <div className="courier-avatar" style={{ background: '#fecaca', color: '#dc2626' }}>✗</div>
+              <div className="courier-title" style={{ color: '#dc2626' }}>Order Cancelled</div>
+              <div className="courier-subtitle">Courier info is not accessible</div>
+            </div>
+          ) : !assigned ? (
             <div className="courier-pending">
               <div className="courier-avatar skeleton" />
               <div className="courier-title">Not assigned yet</div>
@@ -276,6 +429,10 @@ export const OrderDetailsPage = () => {
                   <div className="courier-name">{courierInfo.name}</div>
                   <div className="courier-id">Courier ID: {courierInfo.id}</div>
                 </div>
+              </div>
+              <div className="info-row">
+                <span>Transport Type</span>
+                <strong style={{ textTransform: 'uppercase' }}>{courierInfo.transportType}</strong>
               </div>
               <div className="info-row">
                 <span>Phone</span>
@@ -319,11 +476,11 @@ export const OrderDetailsPage = () => {
         <div className="details-card timeline-card">
           <h3>Status Timeline</h3>
           <div className="timeline">
-            {STATUS_STEPS.map((step, idx) => {
-              const rank = { created: 1, processing: 2, assigned: 3, inProgress: 4, delivered: 5 }
+            {timelineSteps.map((step, idx) => {
+              const rank = { created: 1, processing: 2, assigned: 3, inProgress: 4, delivered: 5, cancelled: 6 }
               const isActive = rank[step.key] <= rank[statusKey]
               return (
-                <div key={step.key} className={`timeline-item ${isActive ? 'active' : ''}`}>
+                <div key={step.key} className={`timeline-item ${isActive ? 'active' : ''} ${step.key === 'cancelled' ? 'cancelled' : ''}`}>
                   <div className="timeline-dot" />
                   <div className="timeline-content">
                     <div className="timeline-label">{step.label}</div>
@@ -332,7 +489,7 @@ export const OrderDetailsPage = () => {
                       {step.by && <span>by {step.by}</span>}
                     </div>
                   </div>
-                  {idx < STATUS_STEPS.length - 1 && <div className="timeline-line" />}
+                  {idx < timelineSteps.length - 1 && <div className="timeline-line" />}
                 </div>
               )
             })}
@@ -413,6 +570,63 @@ export const OrderDetailsPage = () => {
               >
                 {manualLoading ? 'Назначаем...' : 'Назначить'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Status change modal */}
+      {showStatusModal && (
+        <div className="od-overlay">
+          <div className="od-modal" style={{ maxWidth: '380px' }}>
+            <div className="od-modal-header">
+              <h2>Изменить статус заказа</h2>
+              <button
+                type="button"
+                className="od-modal-close"
+                onClick={() => setShowStatusModal(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="od-modal-body">
+              <p className="od-modal-info">
+                Текущий статус: <strong>{order.status}</strong>
+              </p>
+              <div className="od-status-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                {[
+                  { value: 'NEW', label: 'New' },
+                  { value: 'ACCEPTED', label: 'Accepted' },
+                  { value: 'PREPARING', label: 'Preparing' },
+                  { value: 'READY', label: 'Ready' },
+                  { value: 'ASSIGNED', label: 'Assigned' },
+                  { value: 'IN_TRANSIT', label: 'In Transit' },
+                  { value: 'DELIVERED', label: 'Delivered' },
+                  { value: 'CANCELLED', label: 'Cancelled' },
+                ].map(s => {
+                  const isCurrent = order.status?.toUpperCase() === s.value
+                  return (
+                    <button
+                      key={s.value}
+                      type="button"
+                      className={`btn-outline ${isCurrent ? 'active-status' : ''}`}
+                      style={{
+                        textAlign: 'left',
+                        padding: '0.6rem 1rem',
+                        background: isCurrent ? '#eff6ff' : '#ffffff',
+                        borderColor: isCurrent ? '#3b82f6' : '#e5e7eb',
+                        color: isCurrent ? '#1d4ed8' : '#374151',
+                        fontWeight: isCurrent ? '700' : '500',
+                      }}
+                      onClick={() => handleUpdateStatus(s.value)}
+                      disabled={statusLoading}
+                    >
+                      {s.label} {isCurrent && '✓'}
+                    </button>
+                  )
+                })}
+              </div>
+              {statusErr && <div className="od-error" style={{ marginTop: '0.75rem' }}>{statusErr}</div>}
             </div>
           </div>
         </div>

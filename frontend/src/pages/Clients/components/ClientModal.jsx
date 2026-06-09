@@ -41,6 +41,7 @@ export const ClientModal = ({
           email: '',
           phone: '',
         }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFormData(newFormData)
     setErrors({})
   }, [client, isOpen, mode])

@@ -17,7 +17,6 @@ const formatDate = (value) => {
   })
 }
 
-const formatRole = (value) => String(value || 'COURIER').trim().toUpperCase()
 const formatBool = (value) => (value ? 'Yes' : 'No')
 const formatDateTime = (value) => {
   if (!value) return '---'
@@ -458,7 +457,7 @@ export const CourierPage = () => {
               onClick={openCreate}
               disabled={loading}
             >
-              + Create Employee
+              + Create Courier
             </button>
           )}
         </div>

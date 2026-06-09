@@ -1,4 +1,4 @@
-﻿.order-details-page {
+.order-details-page {
   padding: 1.25rem 1.5rem 2rem;
 }
 
@@ -328,6 +328,10 @@
 
 .timeline-item.active .timeline-dot {
   background: #22c55e;
+}
+
+.timeline-item.active.cancelled .timeline-dot {
+  background: #ef4444;
 }
 
 .timeline-line {

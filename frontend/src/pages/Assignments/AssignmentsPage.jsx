@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { assignmentsApi } from '../../api/assignments.api'
 import { couriersApi } from '../../api/couriers.api'
-import { usersApi } from '../../api/users.api'
 import { Pagination } from '../../components/common/Pagination'
 import './assignmentsPage.css'
 

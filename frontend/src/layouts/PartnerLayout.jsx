@@ -7,7 +7,6 @@ import './partnerLayout.css'
 export const PartnerLayout = ({ children, currentPage }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
-  const [topbarName, setTopbarName] = useState('')
   const profileMenuRef = useRef(null)
   const navigate = useNavigate()
 
@@ -22,34 +21,13 @@ export const PartnerLayout = ({ children, currentPage }) => {
 
   const resolvedName = useMemo(() => {
     if (isAdmin) return 'Admin'
-    return topbarName || session?.name || (isDirector ? 'Director' : 'Manager')
-  }, [isAdmin, isDirector, session?.name, topbarName])
+    return session?.name || session?.email || (isDirector ? 'Director' : 'Manager')
+  }, [isAdmin, isDirector, session?.name, session?.email])
 
   const handleLogout = () => {
     auth.signOut()
     navigate('/sign-in', { replace: true })
   }
-
-  useEffect(() => {
-    if (isAdmin) return undefined
-
-    const syncTopbarName = () => {
-      const users = storage.getUsers?.() || []
-      const director = users.find(user => user.role?.toUpperCase() === 'DIRECTOR')
-      const directorName = director
-        ? `${director.firstName || ''} ${director.lastName || ''}`.trim()
-        : ''
-      setTopbarName(directorName || session?.name || '')
-    }
-
-    syncTopbarName()
-    window.addEventListener('users-updated', syncTopbarName)
-    window.addEventListener('storage', syncTopbarName)
-    return () => {
-      window.removeEventListener('users-updated', syncTopbarName)
-      window.removeEventListener('storage', syncTopbarName)
-    }
-  }, [isAdmin, session?.name])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -119,18 +97,17 @@ export const PartnerLayout = ({ children, currentPage }) => {
                 <span className="nav-icon"><img src="/src/assets/order.png" alt="" /></span>
                 <span className="nav-text">Заказы</span>
               </Link>
-              <Link to="/users"           className={`nav-link ${isActive('users')           ? 'active' : ''}`}>
-                <span className="nav-icon"><img src="/src/assets/Users.png" alt="" /></span>
-                <span className="nav-text">Сотрудники</span>
-              </Link>
+              {role === 'DIRECTOR' && (
+                <Link to="/users"           className={`nav-link ${isActive('users')           ? 'active' : ''}`}>
+                  <span className="nav-icon"><img src="/src/assets/Users.png" alt="" /></span>
+                  <span className="nav-text">Сотрудники</span>
+                </Link>
+              )}
               <Link to="/addresses"       className={`nav-link ${isActive('addresses')       ? 'active' : ''}`}>
                 <span className="nav-icon"><img src="/src/assets/Address.png" alt="" /></span>
                 <span className="nav-text">Адреса</span>
               </Link>
-              <Link to="/clients"         className={`nav-link ${isActive('clients')         ? 'active' : ''}`}>
-                <span className="nav-icon"><img src="/src/assets/Users.png" alt="" /></span>
-                <span className="nav-text">Clients</span>
-              </Link>
+
               <Link to="/catalog"         className={`nav-link ${isActive('catalog')         ? 'active' : ''}`}>
                 <span className="nav-icon"><img src="/src/assets/Home.png" alt="" /></span>
                 <span className="nav-text">Каталог</span>
@@ -153,9 +130,9 @@ export const PartnerLayout = ({ children, currentPage }) => {
                 <span className="nav-icon"><img src="/src/assets/order.png" alt="" /></span>
                 <span className="nav-text">Заказы</span>
               </Link>
-              <Link to="/clients"    className={`nav-link ${isActive('clients')    ? 'active' : ''}`}>
+              <Link to="/users"      className={`nav-link ${isActive('users')      ? 'active' : ''}`}>
                 <span className="nav-icon"><img src="/src/assets/Users.png" alt="" /></span>
-                <span className="nav-text">Clients</span>
+                <span className="nav-text">Сотрудники</span>
               </Link>
               <Link to="/addresses"  className={`nav-link ${isActive('addresses')  ? 'active' : ''}`}>
                 <span className="nav-icon"><img src="/src/assets/Address.png" alt="" /></span>

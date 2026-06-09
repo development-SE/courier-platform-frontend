@@ -3,7 +3,6 @@ import { usersApi } from '../../api/users.api'
 import { Pagination } from '../../components/common/Pagination'
 import { ConfirmDialog } from '../../components/common/ConfirmDialog'
 import { ClientModal } from './components/ClientModal'
-import { auth } from '../../utils/auth'
 import './clientPage.css'
 
 const formatDate = (value) => {
@@ -19,10 +18,6 @@ const formatDate = (value) => {
 }
 
 export const ClientPage = () => {
-  const session = auth.getSession()
-  const role = session?.role || ''
-  const isSuperAdmin = role === 'SUPER_ADMIN'
-  const isAdmin = role === 'ADMIN' || isSuperAdmin
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')

@@ -1,4 +1,4 @@
-﻿.order-create-page {
+.order-create-page {
   padding: 1.25rem 1.5rem 2rem;
   max-width: 980px;
   margin: 0 auto;
@@ -20,6 +20,16 @@
   background: #ecfdf3;
   border: 1px solid #bbf7d0;
   color: #15803d;
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.order-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
   padding: 0.8rem 1rem;
   border-radius: 8px;
   margin-bottom: 1rem;
@@ -145,4 +155,22 @@
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+.pickup-search-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pickup-search-input {
+  border-color: #cbd5e1;
+  font-size: 0.85rem !important;
+  padding: 0.45rem 0.75rem !important;
+  background-color: #f8fafc;
+}
+
+.pickup-search-input:focus {
+  background-color: #ffffff;
+  border-color: #3b82f6;
 }

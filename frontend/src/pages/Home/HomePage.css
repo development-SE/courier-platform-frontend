@@ -152,3 +152,25 @@
     font-size: 1.6rem;
   }
 }
+
+/* ── Loading Skeleton ───────────────────────────────────────────────────────── */
+.metric-value.loading-pulse {
+  display: inline-block;
+  width: 70px;
+  height: 28px;
+  background: #e2e8f0;
+  border-radius: 6px;
+  animation: metric-pulse 1.5s infinite ease-in-out;
+  vertical-align: middle;
+}
+
+@keyframes metric-pulse {
+  0%, 100% {
+    opacity: 0.5;
+    background-color: #e2e8f0;
+  }
+  50% {
+    opacity: 1;
+    background-color: #cbd5e1;
+  }
+}

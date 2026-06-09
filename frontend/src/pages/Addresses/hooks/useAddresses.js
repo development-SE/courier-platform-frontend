@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { addressesApi } from '../../../api/addresses.api'
 import { companiesApi } from '../../../api/companies.api'
 import { usersApi } from '../../../api/users.api'
+import { auth } from '../../../utils/auth'
 
 export const useAddresses = (initialPageSize = 10) => {
   const [addresses, setAddresses] = useState([])
@@ -75,10 +76,16 @@ export const useAddresses = (initialPageSize = 10) => {
     fetchAddresses(filters, page, pageSize)
   }, [filters, page, pageSize, fetchAddresses])
 
+  const session = auth.getSession()
+  const role = session?.role?.toUpperCase()
+  const isCompanyScoped = role === 'DIRECTOR' || role === 'PARTNER' || role === 'MANAGER'
+
   useEffect(() => {
     fetchCompanies()
-    fetchUsers()
-  }, [fetchCompanies, fetchUsers])
+    if (!isCompanyScoped) {
+      fetchUsers()
+    }
+  }, [fetchCompanies, fetchUsers, isCompanyScoped])
 
   const handleFilterChange = (newFilters) => {
     setFilters(newFilters)

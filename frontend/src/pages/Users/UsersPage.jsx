@@ -12,6 +12,8 @@ export const UsersPage = () => {
   const role = session?.role || ''
   const isSuperAdmin = role === 'SUPER_ADMIN'
   const isAdmin = role === 'ADMIN' || isSuperAdmin
+  const isDirector = role === 'DIRECTOR'
+  const isManager = role === 'MANAGER'
   const pageTitle = 'Employees'
   const {
     users,
@@ -30,7 +32,7 @@ export const UsersPage = () => {
     handleCreate,
     handleUpdate,
     handleDelete,
-  } = useUsers(10, { canViewAdmins: isSuperAdmin })
+  } = useUsers(10, { canViewAdmins: false })
 
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -40,13 +42,22 @@ export const UsersPage = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteError, setDeleteError] = useState(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const isAdminUsersView = isSuperAdmin && filters.role === 'ADMIN'
+  const isAdminUsersView = false
 
   useEffect(() => {
-    if (!isAdmin && filters.role !== 'MANAGER') {
-      handleFilterChange({ ...filters, role: 'MANAGER' })
+    const defaultRole = isAdmin ? '' : isDirector ? '' : 'COURIER'
+    const allowedRoles = isSuperAdmin
+      ? ['', 'DIRECTOR', 'MANAGER', 'COURIER']
+      : isAdmin
+      ? ['', 'DIRECTOR', 'MANAGER', 'COURIER']
+      : isDirector
+      ? ['', 'MANAGER', 'COURIER']
+      : ['COURIER']
+
+    if (!allowedRoles.includes(filters.role)) {
+      handleFilterChange({ ...filters, role: defaultRole })
     }
-  }, [filters, handleFilterChange, isAdmin])
+  }, [filters, handleFilterChange, isAdmin, isSuperAdmin, isDirector, isManager])
 
   const handleSearchChange = (e) => {
     const value = e.target.value
@@ -207,32 +218,38 @@ export const UsersPage = () => {
               />
             </div>
             <div className="toolbar-right">
-              <button onClick={handleAddUser} className="btn-add-user" disabled={loading || isAdminUsersView}>
-                + Добавить
-              </button>
+              {!isManager && (
+                <button onClick={handleAddUser} className="btn-add-user" disabled={loading || isAdminUsersView}>
+                  + Добавить
+                </button>
+              )}
             </div>
           </>
         ) : (
           <>
             <div className="toolbar-left action-left">
-              <button
-                onClick={handleDeleteClick}
-                disabled={loading}
-                className="action-btn-icon delete-icon"
-                title="Удалить"
-              >
-                <img src="/src/assets/icon.png" alt="Logo" width={15} height={15} />
-              </button>
+              {!isManager && (
+                <button
+                  onClick={handleDeleteClick}
+                  disabled={loading}
+                  className="action-btn-icon delete-icon"
+                  title="Удалить"
+                >
+                  <img src="/src/assets/icon.png" alt="Logo" width={15} height={15} />
+                </button>
+              )}
               <span className="selection-info">{selectedIds.length} selected</span>
             </div>
             <div className="toolbar-right action-buttons">
-              <button
-                onClick={handleEdit}
-                disabled={selectedIds.length !== 1 || loading}
-                className="action-btn"
-              >
-                Редактировать
-              </button>
+              {!isManager && (
+                <button
+                  onClick={handleEdit}
+                  disabled={selectedIds.length !== 1 || loading}
+                  className="action-btn"
+                >
+                  Редактировать
+                </button>
+              )}
               <button
                 onClick={handleView}
                 disabled={selectedIds.length !== 1 || loading}
@@ -254,19 +271,33 @@ export const UsersPage = () => {
                 id="roleFilter"
                 value={filters.role}
                 onChange={handleRoleFilterChange}
-                disabled={loading || !isAdmin}
+                disabled={loading || isManager}
               >
-                {isAdmin ? (
+                {isSuperAdmin && (
                   <>
                     <option value="">Все роли</option>
-                    {isSuperAdmin && <option value="ADMIN">ADMIN</option>}
                     <option value="DIRECTOR">Директор</option>
                     <option value="MANAGER">Менеджер</option>
                     <option value="COURIER">Курьер</option>
-                    <option value="USER">Пользователь</option>
                   </>
-                ) : (
-                  <option value="MANAGER">Менеджер</option>
+                )}
+                {isAdmin && !isSuperAdmin && (
+                  <>
+                    <option value="">Все роли</option>
+                    <option value="DIRECTOR">Директор</option>
+                    <option value="MANAGER">Менеджер</option>
+                    <option value="COURIER">Курьер</option>
+                  </>
+                )}
+                {isDirector && (
+                  <>
+                    <option value="">Все роли</option>
+                    <option value="MANAGER">Менеджер</option>
+                    <option value="COURIER">Курьер</option>
+                  </>
+                )}
+                {isManager && (
+                  <option value="COURIER">Курьер</option>
                 )}
               </select>
             </div>

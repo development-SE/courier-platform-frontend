@@ -1,4 +1,4 @@
-﻿import { SERVICE_TYPES } from '../orderFormUtils'
+import { SERVICE_TYPES } from '../orderFormUtils'
 
 export const OrderBasicSection = ({ formData, errors, onChange }) => {
   return (
@@ -15,7 +15,7 @@ export const OrderBasicSection = ({ formData, errors, onChange }) => {
           >
             <option value="">Выберите сервис</option>
             {SERVICE_TYPES.map(type => (
-              <option key={type} value={type}>{type}</option>
+              <option key={type.value} value={type.value}>{type.label}</option>
             ))}
           </select>
           {errors.serviceType && <span className="error-text">{errors.serviceType}</span>}

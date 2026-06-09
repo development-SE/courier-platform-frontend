@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ordersApi } from '../../../api/ordersApi'
 import { addressesApi } from '../../../api/addresses.api'
@@ -120,7 +120,7 @@ export const useOrderCreateForm = () => {
     setErrors({})
   }
 
-  const handleSave = async (assign = false) => {
+  const handleSave = async () => {
   if (!validate()) return
   setLoading(true)
   setSuccessMessage('')

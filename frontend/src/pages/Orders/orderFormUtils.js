@@ -1,7 +1,7 @@
-﻿export const SERVICE_TYPES = [
-  'Экспресс',
-  'Стандарт',
-  'Супер срочно',
+export const SERVICE_TYPES = [
+  { value: 'EXPRESS', label: 'Экспресс' },
+  { value: 'STANDARD', label: 'Стандарт' },
+  { value: 'SCHEDULED', label: 'Супер срочно' },
 ]
 
 export const DELIVERY_TYPES = [

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { auth } from '../../../utils/auth'
 import './userModal.css'
 
@@ -71,7 +71,19 @@ export const UserModal = ({
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+    setFormData(prev => {
+      if (name === 'role') {
+        const next = { ...prev, role: value }
+        if (value === 'COURIER' || value === 'USER') {
+          next.companyId = ''
+        }
+        return next
+      }
+      return {
+        ...prev,
+        [name]: value,
+      }
+    })
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }))
     }
@@ -154,18 +166,8 @@ export const UserModal = ({
 
   const isViewMode = mode === 'view' && !isEditing
   const isCreateMode = mode === 'create'
-  const isCompanyDisabled = isViewMode
+  const isCompanyDisabled = isViewMode || formData.role === 'COURIER' || formData.role === 'USER'
   const title = isCreateMode ? 'Добавить пользователя' : 'Пользователь'
-  const getRoleLabel = (role) => {
-    const normalizedRole = role?.toUpperCase()
-    const labels = {
-      DIRECTOR: 'Директор',
-      MANAGER: 'Менеджер',
-      COURIER: 'Курьер',
-      USER: 'Пользователь',
-    }
-    return labels[normalizedRole] || role || ''
-  }
 
   return (
     <div className="modal-overlay" onClick={onCancel}>
@@ -234,28 +236,18 @@ export const UserModal = ({
 
             <div className="form-group">
               <label htmlFor="role">Роль</label>
-              {isDirector ? (
-                /* Director can only create MANAGERs, but view/edit shows the selected user's real role. */
-                <input
-                  id="role"
-                  type="text"
-                  value={isCreateMode ? 'Менеджер' : getRoleLabel(formData.role)}
-                  disabled
-                />
-              ) : (
-                <select
-                  id="role"
-                  name="role"
-                  value={formData.role}
-                  onChange={handleChange}
-                  disabled={isViewMode}
-                  className={errors.role ? 'input-error' : ''}
-                >
-                  <option value="">Выберите роль</option>
-                  <option value="DIRECTOR">Директор</option>
-                  <option value="MANAGER">Менеджер</option>
-                </select>
-              )}
+              <select
+                id="role"
+                name="role"
+                value={formData.role}
+                onChange={handleChange}
+                disabled={isViewMode}
+                className={errors.role ? 'input-error' : ''}
+              >
+                <option value="">Выберите роль</option>
+                <option value="DIRECTOR">Директор</option>
+                <option value="MANAGER">Менеджер</option>
+              </select>
               {errors.role && <span className="error-text">{errors.role}</span>}
             </div>
           </div>

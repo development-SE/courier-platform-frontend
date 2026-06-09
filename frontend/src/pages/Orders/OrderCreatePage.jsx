@@ -1,4 +1,4 @@
-﻿import { OrderBasicSection } from './components/OrderBasicSection'
+import { OrderBasicSection } from './components/OrderBasicSection'
 import { OrderDropoffSection } from './components/OrderDropoffSection'
 import { OrderPickupSection } from './components/OrderPickupSection'
 import { useOrderCreateForm } from './hooks/useOrderCreateForm'
@@ -25,6 +25,7 @@ export const OrderCreatePage = () => {
       </div>
 
       {successMessage && <div className="order-success">{successMessage}</div>}
+      {errors.submit && <div className="order-error">{errors.submit}</div>}
 
       <OrderBasicSection
         formData={formData}

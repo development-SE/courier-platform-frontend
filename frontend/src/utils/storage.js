@@ -30,7 +30,7 @@ export const storage = {
             if (!seed) {
               return {
                 ...u,
-                role: u.role === 'Dispatcher' ? 'Courier' : u.role,
+                role: u.role === 'Dispatcher' ? 'COURIER' : u.role,
               }
             }
             return {
@@ -38,7 +38,7 @@ export const storage = {
               ...u,
               firstName: u.firstName || seed.firstName,
               lastName: u.lastName || seed.lastName,
-              role: u.role === 'Dispatcher' ? 'Courier' : (u.role || seed.role),
+              role: u.role === 'Dispatcher' ? 'COURIER' : (u.role || seed.role),
             }
           })
           localStorage.setItem(USERS_KEY, JSON.stringify(repaired))
