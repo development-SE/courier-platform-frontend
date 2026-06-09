@@ -26,11 +26,13 @@ function AssignmentCard({
   orderDetails,
   onOpen,
   courierType,
+  confirmedCode,
 }: {
   item: AssignmentResponse
   orderDetails?: OrderResponse
   onOpen: (assignmentId: string, orderId: string) => void
   courierType?: string
+  confirmedCode?: string
 }) {
   const fetchOrderDetails = useShiftStore(state => state.fetchOrderDetails)
 
@@ -49,6 +51,8 @@ function AssignmentCard({
 
   const isOffer = item.assignmentStatus === 'PENDING'
   const isContractor = courierType === 'CONTRACTOR'
+  const isDelivered = item.assignmentStatus === 'DELIVERED'
+  const displayCode = confirmedCode || (isDelivered ? orderDetails?.deliveryConfirmationCode : undefined)
 
   return (
     <Pressable
@@ -100,6 +104,12 @@ function AssignmentCard({
       </View>
 
       <View style={styles.cardFooter}>
+        {isDelivered && displayCode ? (
+          <View style={styles.confirmedCodeRow}>
+            <Ionicons name="checkmark-circle" size={14} color="#34d399" />
+            <AppText style={styles.confirmedCodeText}>Код: {displayCode}</AppText>
+          </View>
+        ) : null}
         <View style={styles.actionRow}>
           {isOffer && isContractor ? (
             <View style={styles.offerBadge}>
@@ -137,12 +147,14 @@ export function OrdersScreen() {
     ordersCache,
     loadAssignments,
     refreshAssignments,
+    confirmedCodes,
   } = useShiftStore()
 
   const [activeTab, setActiveTab] = useState<TabType>('offers')
 
   useEffect(() => {
     void loadAssignments()
+    void useShiftStore.getState().initConfirmedCodes?.()
   }, [loadAssignments])
 
   const visibleList = useMemo(() => {
@@ -224,6 +236,7 @@ export function OrdersScreen() {
                   orderDetails={ordersCache[item.orderId]}
                   onOpen={openDetails}
                   courierType={courierType}
+                  confirmedCode={confirmedCodes[item.orderId]}
                 />
               ))}
 
@@ -430,6 +443,18 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255, 255, 255, 0.05)',
     paddingTop: 12,
     marginTop: 8,
+  },
+  confirmedCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  confirmedCodeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#34d399',
+    fontFamily: Platform.select({ ios: 'CourierNewPSMT', android: 'monospace', default: 'monospace' }),
   },
   actionRow: {
     flexDirection: 'row',

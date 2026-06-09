@@ -378,6 +378,9 @@ export default function App() {
       total: number
       items: MockFoodCheckoutItem[]
       serviceType: 'STANDARD' | 'SCHEDULED' | 'EXPRESS'
+      pickupAddress?: string
+      pickupLat?: number
+      pickupLon?: number
     }) => {
       if (!session?.accessToken) throw new Error('No access token')
 
@@ -387,19 +390,20 @@ export default function App() {
         restaurantName: params.restaurantName,
         total: params.total,
         items: params.items,
-        pickupLat: 51.1282,
-        pickupLon: 71.4304,
-        deliveryStreet: primaryAddressObj?.street || 'Uly Dala Ave',
-        deliveryHouse: primaryAddressObj?.house || '8',
-        deliveryCity: primaryAddressObj?.city || 'Astana',
-        deliveryEntrance: primaryAddressObj?.entrance || '',
-        deliveryFloor: primaryAddressObj?.floor || '',
-        deliveryApartment: primaryAddressObj?.apartment || '',
+        pickupAddress: params.pickupAddress,
+        pickupLat: params.pickupLat ?? 51.1282,
+        pickupLon: params.pickupLon ?? 71.4304,
+        deliveryStreet: primaryAddressObj?.street ?? '',
+        deliveryHouse: primaryAddressObj?.house ?? '',
+        deliveryCity: primaryAddressObj?.city ?? 'Astana',
+        deliveryEntrance: primaryAddressObj?.entrance ?? '',
+        deliveryFloor: primaryAddressObj?.floor ?? '',
+        deliveryApartment: primaryAddressObj?.apartment ?? '',
         deliveryLat,
         deliveryLon,
         serviceType: params.serviceType,
-        recipientName: [session.firstName, session.lastName].filter(Boolean).join(' ') || 'Client',
-        recipientPhone: session.phone || '+7 777 000 0000',
+        recipientName: [session.firstName, session.lastName].filter(Boolean).join(' '),
+        recipientPhone: session.phone ?? '',
       })
       if (!createRes.ok) {
         throw new Error(createRes.error.message)
@@ -420,7 +424,7 @@ export default function App() {
       upsertMockFoodOrder(newOrder)
       return newOrder
     },
-    [session?.accessToken, upsertMockFoodOrder, primaryAddressObj],
+    [session, upsertMockFoodOrder, primaryAddressObj],
   )
 
   const openRestaurantMenu = () => {

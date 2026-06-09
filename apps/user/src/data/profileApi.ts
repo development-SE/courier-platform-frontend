@@ -1,4 +1,4 @@
-import { apiRequest, getApiBaseUrl } from './apiClient'
+import { apiRequest } from './apiClient'
 
 type ApiResponse<T> = {
   success: boolean
@@ -42,5 +42,19 @@ export async function updateUserProfile(
       Authorization: `Bearer ${accessToken}`,
     },
     json: data,
+  })
+}
+
+export async function changePassword(
+  accessToken: string,
+  oldPassword: string,
+  newPassword: string,
+) {
+  return apiRequest<ApiResponse<string>>('/api/v1/auth/change-password', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    json: { oldPassword, newPassword },
   })
 }

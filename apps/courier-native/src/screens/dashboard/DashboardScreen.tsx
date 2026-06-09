@@ -742,14 +742,7 @@ export function DashboardScreen() {
                     </View>
                   </View>
 
-                  {activeOrder.comment ? (
-                    <View style={styles.commentBox}>
-                      <Ionicons name="megaphone-outline" size={14} color="#ee8f5e" />
-                      <Text style={styles.commentText} numberOfLines={2}>
-                        "{activeOrder.comment}"
-                      </Text>
-                    </View>
-                  ) : null}
+              
 
                   {/* Order Details Button */}
                   <Pressable style={styles.cardDetailsBtn} onPress={openOrderDetails}>
@@ -770,10 +763,6 @@ export function DashboardScreen() {
                 <Pressable style={styles.cancelOrderInlineButton} onPress={() => void cancelActiveOrder()}>
                   <Ionicons name="close-circle-outline" size={16} color="#ef706a" />
                   <Text style={styles.cancelOrderInlineText}>Cancel order</Text>
-                </Pressable>
-                <Pressable style={styles.viewDetailsLink} onPress={openOrderDetails}>
-                  <Text style={styles.viewDetailsLinkText}>View Order Details</Text>
-                  <Ionicons name="arrow-forward" size={14} color="#9da2af" />
                 </Pressable>
               </Animated.View>
             ) : !hasActiveOrder ? (

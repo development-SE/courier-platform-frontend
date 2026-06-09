@@ -154,9 +154,9 @@ export async function createParcelOrder(accessToken: string, params: CreateParce
         phone: params.recipientPhone.trim(),
       },
       pickupInfo: {
-        name: params.pickupContactName?.trim() || 'Sender',
+        name: params.pickupContactName?.trim() ?? '',
         surname: null,
-        phone: params.pickupContactPhone?.trim() || '+7 700 000 0000',
+        phone: params.pickupContactPhone?.trim() ?? '',
       },
     },
   })
@@ -169,6 +169,7 @@ export type CreateFoodOrderParams = {
   pickupAddress?: string
   pickupLat?: number
   pickupLon?: number
+  
   deliveryCity?: string
   deliveryStreet?: string
   deliveryHouse?: string
@@ -180,6 +181,9 @@ export type CreateFoodOrderParams = {
   serviceType?: 'STANDARD' | 'SCHEDULED' | 'EXPRESS'
   recipientName?: string
   recipientPhone?: string
+
+  pickupContactName?: string
+  pickupContactPhone?: string
 }
 
 export async function createFoodOrder(accessToken: string, params: CreateFoodOrderParams) {
@@ -200,8 +204,8 @@ export async function createFoodOrder(accessToken: string, params: CreateFoodOrd
       pickupAddress: {
         type: 'COMPANY',
         city: 'Astana',
-        street: params.pickupAddress?.trim() || 'Mangilik El Ave, 53',
-        house: '53',
+        street: params.pickupAddress?.trim() ?? '',
+        house: '1',
         latitude: params.pickupLat ?? 51.1282,
         longitude: params.pickupLon ?? 71.4304,
       },
@@ -217,14 +221,14 @@ export async function createFoodOrder(accessToken: string, params: CreateFoodOrd
         longitude: params.deliveryLon ?? 71.4450,
       },
       recipientInfo: {
-        name: params.recipientName?.trim() || 'Client',
+        name: params.recipientName?.trim() ?? '',
         surname: null,
-        phone: params.recipientPhone?.trim() || '+7 777 000 0000',
+        phone: params.recipientPhone?.trim() ?? '',
       },
       pickupInfo: {
-        name: params.restaurantName,
+        name: params.pickupContactName?.trim() || params.restaurantName,
         surname: null,
-        phone: '+7 700 400 7000',
+        phone: params.pickupContactPhone?.trim() ?? '',
       },
     },
   })

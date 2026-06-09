@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Pressable,
   SafeAreaView,
@@ -67,36 +67,7 @@ function normalizePayment(payment: string) {
   return payment === 'cashless' ? 'Cashless' : payment
 }
 
-const MOCK_RECIPIENTS: Record<string, { name: string; phone: string }> = {
-  'KFC': { name: 'Алихан Сыздыков', phone: '+7 701 555 33 22' },
-  'АШАН Гипермаркет': { name: 'Алия Сыздыкова', phone: '+7 777 999 88 77' },
-  'Магнит': { name: 'Дмитрий Ковалев', phone: '+7 705 444 11 00' },
-  'Пятёрочка': { name: 'Елена Воронова', phone: '+7 702 888 77 66' },
-}
 
-const CLIENT_MOCK_ITEMS: Record<string, string[]> = {
-  'KFC': [
-    '🍔 Шефбургер Острый',
-    '🍟 Картофель Фри средний',
-    '🥤 Напиток Газированный Pepsi 0.5л',
-  ],
-  'АШАН Гипермаркет': [
-    '🥛 Молоко Домик в деревне 3.2% (1л)',
-    '🍞 Хлеб Тостовый Harrys',
-    '🥚 Яйца куриные С1 (10 шт.)',
-    '🍎 Яблоки сезонные (1.5 кг)',
-  ],
-  'Магнит': [
-    '🍫 Шоколад молочный Alpen Gold Max Fun',
-    '🍌 Бананы спелые (1.2 кг)',
-    '🧴 Жидкое мыло Safeguard Классическое 225мл',
-  ],
-  'Пятёрочка': [
-    '☕ Кофе растворимый Jacobs Monarch 95г',
-    '🥐 Круассаны 7 Days с кремом какао (2 шт.)',
-    '🍬 Конфеты Raffaello коробка 150г',
-  ],
-}
 
 export function OrderDetailScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets()
@@ -162,6 +133,7 @@ export function OrderDetailScreen({ navigation, route }: Props) {
     deliveryCodeError,
     verifyDeliveryCode,
     resendDeliveryCode,
+    confirmedCodes,
   } = useShiftStore(useShallow(state => ({
     activeOrderId: state.activeOrderId,
     stage: state.stage,
@@ -179,10 +151,15 @@ export function OrderDetailScreen({ navigation, route }: Props) {
     deliveryCodeError: state.deliveryCodeError,
     verifyDeliveryCode: state.verifyDeliveryCode,
     resendDeliveryCode: state.resendDeliveryCode,
+    confirmedCodes: state.confirmedCodes,
   })))
 
   const courierProfile = useAuthStore(state => state.courierProfile)
   const courierType = courierProfile?.courierType || 'EMPLOYEE'
+
+  useEffect(() => { void useShiftStore.getState().initConfirmedCodes?.() }, [])
+
+  const confirmedCode = orderId ? confirmedCodes[orderId] : undefined
 
   const isPending = realAssignment?.assignmentStatus === 'PENDING'
   const isContractor = courierType === 'CONTRACTOR'
@@ -214,9 +191,17 @@ export function OrderDetailScreen({ navigation, route }: Props) {
 
   const order = useMemo<OrderView | null>(() => {
     if (realOrder) {
-      const recipientName = realOrder.recipientInfo?.name || 'Client'
+      const recipientNameParts = [realOrder.recipientInfo?.name, realOrder.recipientInfo?.surname].filter(Boolean)
+      const recipientName = recipientNameParts.length > 0 ? recipientNameParts.join(' ') : 'Client'
       const recipientPhone = realOrder.recipientInfo?.phone || '+7 777 000 0000'
-      const clientName = realOrder.serviceType?.toLowerCase() === 'food' ? 'KFC' : (realOrder.pickupAddress?.street || 'Store')
+      const clientName = realOrder.pickupInfo?.name || realOrder.pickupAddress?.street || 'Pickup point'
+
+      const pickupContact = realOrder.pickupInfo
+      const clientContactNameParts = [pickupContact?.name, pickupContact?.surname].filter(Boolean)
+      const clientContactName = clientContactNameParts.length > 0
+        ? clientContactNameParts.join(' ')
+        : recipientName
+      const clientContactPhone = pickupContact?.phone || recipientPhone
 
       return {
         id: realOrder.orderId,
@@ -509,7 +494,7 @@ export function OrderDetailScreen({ navigation, route }: Props) {
             </View>
           </View>
           <Text style={styles.pickupClient}>
-            {isPickedUp ? deliveryAddressTitle : 'KFC'}
+            {isPickedUp ? deliveryAddressTitle : (order?.client || 'Pickup')}
           </Text>
           <Text style={styles.pickupAddress}>
             {isPickedUp ? deliveryAddressDetails : order.pickupAddress}
@@ -544,8 +529,12 @@ export function OrderDetailScreen({ navigation, route }: Props) {
         <View style={styles.authRow}>
           <View style={styles.authCardPrimary}>
             <Text style={styles.authLabel}>ORDER AUTHENTICATION</Text>
-            <Text style={styles.authCode}>{isDelivered ? order.pickupCode : '000000'}</Text>
-            <Text style={styles.authCodeHint}>pickup code</Text>
+            <Text style={styles.authCode}>
+              {isDelivered ? (confirmedCode || order.pickupCode || '------') : '000000'}
+            </Text>
+            <Text style={styles.authCodeHint}>
+              {isDelivered ? 'delivery confirmed' : 'pickup code'}
+            </Text>
             <Text style={styles.authOrderIdLabel}>Order ID</Text>
             <Text style={styles.authOrderId}>#{order.id}</Text>
           </View>
@@ -610,93 +599,17 @@ export function OrderDetailScreen({ navigation, route }: Props) {
             </View>
           </View>
 
-          {/* If picked up, display routing actions and comment directly in the contacts card to save space */}
-          {isPickedUp && (
-            <View style={styles.routeActionsRow}>
-              <Pressable
-                style={styles.openRouteBtn}
-                onPress={() => navigation.navigate(ROOT_ROUTES.MAIN_TABS)}
-              >
-                <Ionicons name="map-outline" size={14} color="#fc8f3c" />
-                <Text style={styles.openRouteText}>On map</Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.openRouteBtn}
-                onPress={() => {
-                  const url = Platform.select({
-                    ios: `maps:0,0?q=${order.deliveryAddress}`,
-                    android: `geo:0,0?q=${order.deliveryAddress}`,
-                  })
-                  if (url) {
-                    Linking.openURL(url).catch(() => {
-                      Alert.alert('Ошибка', 'Не удалось открыть карту')
-                    })
-                  }
-                }}
-              >
-                <Ionicons name="navigate-outline" size={14} color="#fc8f3c" />
-                <Text style={styles.openRouteText}>Open route</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {isPickedUp && order.comment ? (
-            <View style={[styles.noteBox, { marginTop: 12 }]}>
-              <Ionicons name="megaphone-outline" size={14} color="#fc8f3c" />
-              <Text style={styles.noteText}>"{order.comment}"</Text>
-            </View>
-          ) : null}
         </View>
 
-        {/* Delivery Address Card (shown ONLY if NOT picked up yet) */}
-        {!isPickedUp && (
-          <View style={styles.sectionCard}>
-            <View style={styles.routeRow}>
-              <View style={styles.routeAddressWrap}>
-                <Ionicons name="location-outline" size={17} color="#fc8f3c" />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.routeAddressTitle}>{order.deliveryAddress}</Text>
-                  <Text style={styles.routeAddressHint}>{deliveryAddressDetails}</Text>
-                </View>
-              </View>
-            </View>
 
-            <View style={styles.routeActionsRow}>
-              <Pressable
-                style={styles.openRouteBtn}
-                onPress={() => navigation.navigate(ROOT_ROUTES.MAIN_TABS)}
-              >
-                <Ionicons name="map-outline" size={14} color="#fc8f3c" />
-                <Text style={styles.openRouteText}>On map</Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.openRouteBtn}
-                onPress={() => {
-                  const url = Platform.select({
-                    ios: `maps:0,0?q=${order.deliveryAddress}`,
-                    android: `geo:0,0?q=${order.deliveryAddress}`,
-                  })
-                  if (url) {
-                    Linking.openURL(url).catch(() => {
-                      Alert.alert('Ошибка', 'Не удалось открыть карту')
-                    })
-                  }
-                }}
-              >
-                <Ionicons name="navigate-outline" size={14} color="#fc8f3c" />
-                <Text style={styles.openRouteText}>Open route</Text>
-              </Pressable>
-            </View>
-
-            {order.comment ? (
-              <View style={styles.noteBox}>
-                <Ionicons name="megaphone-outline" size={14} color="#fc8f3c" />
-                <Text style={styles.noteText}>"{order.comment}"</Text>
-              </View>
-            ) : null}
-          </View>
+        {!isDelivered && (
+          <Pressable
+            style={styles.openRouteBtnStandalone}
+            onPress={() => navigation.navigate(ROOT_ROUTES.MAIN_TABS)}
+          >
+            <Ionicons name="navigate-circle-outline" size={20} color="#fff" />
+            <Text style={styles.openRouteBtnStandaloneText}>Open route</Text>
+          </Pressable>
         )}
 
         <View style={styles.metaRow}>
@@ -1152,6 +1065,21 @@ const styles = StyleSheet.create({
     color: '#fc8f3c',
     fontSize: 12,
     fontWeight: '600',
+  },
+  openRouteBtnStandalone: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#fc8f3c',
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginBottom: 12,
+  },
+  openRouteBtnStandaloneText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
   },
   noteBox: {
     marginTop: 14,

@@ -188,7 +188,15 @@ export type OrderResponse = {
     longitude?: number
   }
   recipientInfo?: {
+    contactId?: string
     name?: string
+    surname?: string
+    phone?: string
+  }
+  pickupInfo?: {
+    contactId?: string
+    name?: string
+    surname?: string
     phone?: string
   }
   deliveryConfirmationCode?: string

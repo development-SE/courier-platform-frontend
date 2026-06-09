@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Animated, Easing, Image, Pressable, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { updateUserProfile } from '../../data/profileApi'
+import { changePassword, updateUserProfile } from '../../data/profileApi'
 import { InfoRow } from './components/InfoRow'
 import { styles } from './styles'
 import { EmailVerificationScreen } from './verification/EmailVerificationScreen'
@@ -219,6 +219,17 @@ export function EditProfileScreen({
     return { ok: true }
   }
 
+  const handlePasswordSave = async (oldPassword: string, newPassword: string) => {
+    const response = await changePassword(accessToken, oldPassword, newPassword)
+    if (!response.ok) {
+      return { ok: false, message: response.error.message }
+    }
+    if (!response.data.success) {
+      return { ok: false, message: response.data.error?.message ?? response.data.message ?? 'Failed to change password' }
+    }
+    return { ok: true }
+  }
+
   return (
     <View style={styles.editScreen}>
       <View style={[styles.editHeader, { paddingTop: safeTop }]}>
@@ -357,9 +368,11 @@ export function EditProfileScreen({
           ]}
         >
           <PasswordVerificationScreen
+            accessToken={accessToken}
             safeBottom={safeBottom}
             safeTop={safeTop}
             onBackPress={closePasswordScreen}
+            onSave={handlePasswordSave}
           />
         </Animated.View>
       )}

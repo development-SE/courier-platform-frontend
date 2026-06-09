@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useAuthStore } from './authStore'
 import {
   toggleOnlineStatus,
@@ -73,6 +74,11 @@ type ShiftState = {
   verifyingDeliveryCodeAssignmentId: string | null
   deliveryCodeError: string | null
   deliveryCodeVerifiedAt: number | null
+
+  // Confirmed delivery codes (persisted across sessions)
+  confirmedCodes: Record<string, string>
+  confirmedCodesInitialized: boolean
+  initConfirmedCodes: () => Promise<void>
 
   hydrateStatus: (status: CourierStatus) => void
   setStatus: (status: CourierStatus) => Promise<void>
@@ -149,6 +155,9 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
   verifyingDeliveryCodeAssignmentId: null,
   deliveryCodeError: null,
   deliveryCodeVerifiedAt: null,
+
+  confirmedCodes: {},
+  confirmedCodesInitialized: false,
 
   hydrateStatus(status) {
     const current = get()
@@ -573,7 +582,24 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
       verifyingDeliveryCodeAssignmentId: null,
       deliveryCodeError: null,
       deliveryCodeVerifiedAt: null,
+      confirmedCodes: {},
+      confirmedCodesInitialized: false,
     })
+    AsyncStorage.removeItem('@swift_confirmed_delivery_codes').catch(() => {})
+  },
+
+  async initConfirmedCodes() {
+    if (get().confirmedCodesInitialized) return
+    try {
+      const stored = await AsyncStorage.getItem('@swift_confirmed_delivery_codes')
+      if (stored) {
+        set({ confirmedCodes: JSON.parse(stored) as Record<string, string>, confirmedCodesInitialized: true })
+      } else {
+        set({ confirmedCodesInitialized: true })
+      }
+    } catch {
+      set({ confirmedCodesInitialized: true })
+    }
   },
 
   async acceptAssignment(assignmentId) {
@@ -765,12 +791,32 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
         return false
       }
 
+      // Capture orderId before clearing activeOrderId
+      const { activeAssignmentId, activeOrderId, activeAssignments, pendingAssignments, ordersCache, confirmedCodes } = get()
+      const orderId = activeAssignmentId === assignmentId
+        ? activeOrderId
+        : ([...activeAssignments, ...pendingAssignments].find(a => a.id === assignmentId)?.orderId ?? null)
+
+      const newConfirmedCodes = orderId
+        ? { ...confirmedCodes, [orderId]: confirmationCode }
+        : confirmedCodes
+      const newOrdersCache = orderId && ordersCache[orderId]
+        ? { ...ordersCache, [orderId]: { ...ordersCache[orderId], deliveryConfirmationCode: confirmationCode } }
+        : ordersCache
+
+      if (orderId) {
+        AsyncStorage.setItem('@swift_confirmed_delivery_codes', JSON.stringify(newConfirmedCodes))
+          .catch(e => console.warn('[ShiftStore] Failed to persist confirmed codes:', e))
+      }
+
       set({
+        confirmedCodes: newConfirmedCodes,
+        ordersCache: newOrdersCache,
         deliveryCodeVerifiedAt: Date.now(),
         verifyingDeliveryCodeAssignmentId: null,
-        activeOrderId: get().activeAssignmentId === assignmentId ? null : get().activeOrderId,
-        activeAssignmentId: get().activeAssignmentId === assignmentId ? null : get().activeAssignmentId,
-        status: get().activeAssignmentId === assignmentId ? 'online' : get().status
+        activeOrderId: activeAssignmentId === assignmentId ? null : activeOrderId,
+        activeAssignmentId: activeAssignmentId === assignmentId ? null : activeAssignmentId,
+        status: activeAssignmentId === assignmentId ? 'online' : get().status,
       })
 
       await get().refreshAssignmentAfterAction(assignmentId)

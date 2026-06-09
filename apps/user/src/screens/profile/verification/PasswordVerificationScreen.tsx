@@ -1,22 +1,48 @@
 import { useState } from 'react'
 import { Feather } from '@expo/vector-icons'
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import PasswordIllustration from '../../../../assets/password.svg'
 import { styles } from '../styles'
 
 type PasswordVerificationScreenProps = {
+  accessToken: string
   onBackPress: () => void
+  onSave: (oldPassword: string, newPassword: string) => Promise<{ ok: boolean; message?: string }>
   safeBottom: number
   safeTop: number
 }
 
 export function PasswordVerificationScreen({
+  accessToken: _accessToken,
   onBackPress,
+  onSave,
   safeBottom,
   safeTop,
 }: PasswordVerificationScreenProps) {
-  const [currentPassword, setCurrentPassword] = useState('password1')
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSave = async () => {
+    if (!currentPassword || !newPassword) {
+      setError('Please fill in both fields')
+      return
+    }
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    const result = await onSave(currentPassword, newPassword)
+    setSaving(false)
+    if (result.ok) {
+      onBackPress()
+    } else {
+      setError(result.message ?? 'Failed to change password')
+    }
+  }
 
   return (
     <View style={styles.nameScreen}>
@@ -62,6 +88,12 @@ export function PasswordVerificationScreen({
               style={styles.passwordInput}
             />
           </View>
+
+          {error ? (
+            <Text allowFontScaling={false} style={{ color: '#e53935', fontSize: 13, marginTop: 8 }}>
+              {error}
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.passwordIllustrationWrap}>
@@ -70,8 +102,12 @@ export function PasswordVerificationScreen({
       </ScrollView>
 
       <View style={[styles.nameSaveArea, { paddingBottom: Math.max(24, safeBottom + 16) }]}>
-        <Pressable style={styles.nameSaveButton} onPress={onBackPress}>
-          <Text allowFontScaling={false} style={styles.nameSaveText}>Save</Text>
+        <Pressable style={[styles.nameSaveButton, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
+          {saving ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text allowFontScaling={false} style={styles.nameSaveText}>Save</Text>
+          )}
         </Pressable>
       </View>
     </View>

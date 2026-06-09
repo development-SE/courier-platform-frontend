@@ -31,6 +31,9 @@ type RestaurantDetailScreenProps = {
     items: MockFoodCheckoutItem[]
     serviceType: 'STANDARD' | 'SCHEDULED' | 'EXPRESS'
     scheduleTime?: string
+    pickupAddress?: string
+    pickupLat?: number
+    pickupLon?: number
   }) => Promise<UserOrder>
   onBackPress?: () => void
   deliveryAddress?: string
@@ -266,6 +269,9 @@ export function RestaurantDetailScreen({
         })),
         serviceType,
         scheduleTime,
+        pickupAddress: 'Mangilik El Ave, 53',
+        pickupLat: 51.1282,
+        pickupLon: 71.4304,
       })
       if (order) {
         setPlacedOrder({
