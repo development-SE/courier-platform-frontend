@@ -159,66 +159,6 @@ export function ProfileScreen() {
           ))}
         </View>
 
-        {!editOpen ? (
-          <Pressable style={styles.editProfileButton} onPress={openEdit}>
-            <Ionicons name="pencil-outline" size={16} color={appTheme.colors.primary} />
-            <AppText variant="label" style={styles.editProfileButtonText}>Редактировать профиль</AppText>
-          </Pressable>
-        ) : (
-          <View style={styles.editCard}>
-            <AppText variant="body" style={styles.editTitle}>Редактировать профиль</AppText>
-
-            <AppText variant="label" style={styles.editLabel}>Тип транспорта</AppText>
-            <View style={styles.transportRow}>
-              {TRANSPORT_OPTIONS.map(opt => (
-                <Pressable
-                  key={opt}
-                  style={[styles.transportChip, editTransport === opt ? styles.transportChipSelected : undefined]}
-                  onPress={() => setEditTransport(opt)}
-                >
-                  <AppText
-                    variant="label"
-                    style={[styles.transportChipText, editTransport === opt ? styles.transportChipTextSelected : undefined]}
-                  >
-                    {opt}
-                  </AppText>
-                </Pressable>
-              ))}
-            </View>
-
-            <AppText variant="label" style={styles.editLabel}>Макс. активных заказов (1–20)</AppText>
-            <TextInput
-              value={editMaxOrders}
-              onChangeText={setEditMaxOrders}
-              keyboardType="number-pad"
-              maxLength={2}
-              style={styles.editInput}
-              placeholderTextColor="#666"
-            />
-
-            <View style={styles.editActions}>
-              <Pressable
-                style={styles.cancelButton}
-                onPress={() => setEditOpen(false)}
-                disabled={saving}
-              >
-                <AppText variant="label" style={styles.cancelButtonText}>Отмена</AppText>
-              </Pressable>
-              <Pressable
-                style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-                onPress={handleSave}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <AppText variant="label" style={styles.saveButtonText}>Сохранить</AppText>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        )}
-
         <View style={styles.groupCard}>
           <View style={[styles.profileRow, styles.profileRowFirst]}>
             <AppText variant="body" style={{ fontWeight: '700' }}>Документы</AppText>

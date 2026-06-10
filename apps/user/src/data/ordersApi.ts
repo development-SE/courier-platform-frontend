@@ -392,14 +392,15 @@ export function mapOrderStatusToTrackingState(status: string): TrackingState {
   }
 }
 
-export async function cancelOrder(accessToken: string, orderId: string) {
+export async function cancelOrder(accessToken: string, orderId: string, reason: string = 'User cancelled') {
   return apiRequest<ApiResponse<any>>(`/api/v1/orders/${orderId}/status`, {
     method: 'PATCH',
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
     json: {
-      status: 'CANCELLED',
+      newStatus: 'CANCELLED',
+      reason,
     },
   })
 }

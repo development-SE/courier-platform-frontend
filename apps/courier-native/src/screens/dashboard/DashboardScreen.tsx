@@ -836,10 +836,7 @@ export function DashboardScreen() {
               
 
                   {/* Order Details Button */}
-                  <Pressable style={styles.cardDetailsBtn} onPress={openOrderDetails}>
-                    <Text style={styles.cardDetailsBtnText}>Детали заказа</Text>
-                    <Ionicons name="arrow-forward" size={16} color="#2d1b13" />
-                  </Pressable>
+                  
                 </View>
               </>
             ) : null}
@@ -848,9 +845,14 @@ export function DashboardScreen() {
           <View style={styles.bottomControls}>
             {hasActiveOrder ? (
               <Animated.View style={expandedFooterAnimatedStyle} pointerEvents={isExpanded ? 'auto' : 'none'}>
-                <Pressable style={styles.arrivedButton} onPress={handleActionButtonPress}>
-                  <Text style={styles.arrivedButtonText}>{activeActionLabel}</Text>
-                </Pressable>
+                <View style={styles.actionRow}>
+                  <Pressable style={styles.detailsButtonInline} onPress={openOrderDetails}>
+                    <Text style={styles.cardDetailsBtnText}>Order Details</Text>
+                  </Pressable>
+                  <Pressable style={styles.arrivedButton} onPress={handleActionButtonPress}>
+                    <Text style={styles.arrivedButtonText}>{activeActionLabel}</Text>
+                  </Pressable>
+                </View>
                 <Pressable style={styles.cancelOrderInlineButton} onPress={() => void cancelActiveOrder()}>
                   <Ionicons name="close-circle-outline" size={16} color="#ef706a" />
                   <Text style={styles.cancelOrderInlineText}>Cancel order</Text>
@@ -1618,40 +1620,59 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     gap: 0,
   },
+  
+  actionRow: {
+  flexDirection: 'row',
+  gap: 10,
+  marginBottom: 14,
+},
   orderDetailsButton: {
-    minHeight: 40,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#4d4a54',
-    backgroundColor: '#2c2a31',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  orderDetailsButtonText: {
-    color: '#f0f1f7',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  flex: 1,
+  minHeight: 58,
+  borderRadius: 29,
+  borderWidth: 1,
+  borderColor: '#4d4a54',
+  backgroundColor: '#2c2a31',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+orderDetailsButtonText: {
+  color: '#f0f1f7',
+  fontSize: 14,
+  fontWeight: '600',
+},
   arrivedButton: {
-    minHeight: 58,
-    borderRadius: 29,
-    backgroundColor: '#f08d5a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#f08d5a',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.35,
-    shadowRadius: 18,
-    elevation: 10,
-    marginBottom: 14,
-  },
-  arrivedButtonText: {
-    color: '#2d1b13',
-    fontSize: 20,
-    lineHeight: 22,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
+  flex: 2,
+  minHeight: 58,
+  borderRadius: 29,
+  backgroundColor: '#f08d5a',
+  alignItems: 'center',
+  justifyContent: 'center',
+  shadowColor: '#f08d5a',
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.35,
+  shadowRadius: 18,
+  elevation: 10,
+},
+arrivedButtonText: {
+  color: '#2d1b13',
+  fontSize: 14,
+  lineHeight: 22,
+  fontWeight: '800',
+  letterSpacing: 0.2,
+},
+detailsButtonInline: {
+  flex: 1,
+  minHeight: 58,
+  borderRadius: 29,
+  borderWidth: 1,
+  borderColor: '#4d4a54',
+  backgroundColor: '#f08d5a',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexDirection: 'row',
+  gap: 6,
+},
   viewDetailsLink: {
     minHeight: 36,
     alignItems: 'center',

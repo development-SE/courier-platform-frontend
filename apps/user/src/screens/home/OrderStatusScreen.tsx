@@ -28,7 +28,7 @@ import { googleGeocode } from '../../data/googleMapsApi'
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { calculateRoute, decodeRoutePolyline, RoutePoint } from '../../data/routesApi'
-import { getUserOrder, mapOrderStatusToTrackingState, type UserOrder, type TrackingState, updateOrderAddress, type UserOrderAddress } from '../../data/ordersApi'
+import { getUserOrder, mapOrderStatusToTrackingState, type UserOrder, type TrackingState, updateOrderAddress, type UserOrderAddress, cancelOrder } from '../../data/ordersApi'
 import { getOrderAssignment, getCourierLocation, getCourierDetails } from '../../data/logisticsApi'
 
 type OrderStatusScreenProps = {
@@ -51,7 +51,7 @@ type OrderStatusScreenProps = {
 
 
 type EtaMode = 'preparing' | 'liveRoute' | 'delivered'
-const courierName = 'Aman'
+const MOCK_COURIER_NAME = 'Aman'
 
 const restaurantLocation = {
   latitude: 51.1282,
@@ -150,7 +150,7 @@ const statusPresentation: Record<
     cardVariant: 'eta',
   },
   ASSIGNED: {
-    title: `Courier ${courierName} is assigned`,
+    title: `Courier ${MOCK_COURIER_NAME} is assigned`,
     subtitle: 'Courier is heading to the restaurant',
     accentColor: '#a7391e',
     milestoneIndex: 2,
@@ -160,7 +160,7 @@ const statusPresentation: Record<
     cardVariant: 'eta',
   },
   PICKED_UP: {
-    title: `Courier ${courierName} picked up your food`,
+    title: `Courier ${MOCK_COURIER_NAME} picked up your food`,
     subtitle: 'Courier is on the way to your address',
     accentColor: '#a7391e',
     milestoneIndex: 2,
@@ -170,7 +170,7 @@ const statusPresentation: Record<
     cardVariant: 'eta',
   },
   IN_TRANSIT: {
-    title: `Courier ${courierName} is on the way`,
+    title: `Courier ${MOCK_COURIER_NAME} is on the way`,
     subtitle: 'Courier is delivering your food',
     accentColor: '#a7391e',
     milestoneIndex: 2,
@@ -246,7 +246,7 @@ export function OrderStatusScreen({
   const [orderStatus, setOrderStatus] = useState<string>('NEW')
   const [orderData, setOrderData] = useState<UserOrder | null>(null)
   const [cancellationInfo, setCancellationInfo] = useState<{
-    whoCancelled: 'Client' | 'Courier' | 'System'
+    whoCancelled: 'User' | 'Courier' | 'System'
     reason: string
   } | null>(null)
   const [courierId, setCourierId] = useState<string | null>(null)
@@ -275,6 +275,7 @@ export function OrderStatusScreen({
     doorCode: '',
   })
   const [deliveryAddress, setDeliveryAddress] = useState<UserOrderAddress | null>(null)
+  const [isCanceling, setIsCanceling] = useState(false)
 
   const openAddressModal = () => {
     if (deliveryAddress) {
@@ -323,6 +324,44 @@ export function OrderStatusScreen({
     } catch (err) {
       Alert.alert('Error', 'An unexpected error occurred while updating address')
     }
+  }
+
+  const handleCancelOrder = () => {
+    if (!accessToken || !orderId) {
+      Alert.alert('Cancel Order', 'Cancel order is not available in mock mode.')
+      return
+    }
+
+    Alert.alert('Cancel Order', 'Are you sure you want to cancel this order?', [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes, Cancel',
+        style: 'destructive',
+        onPress: async () => {
+          setIsCanceling(true)
+          try {
+            const res = await cancelOrder(accessToken, orderId, 'User cancelled')
+            if (res.ok && res.data?.success) {
+              Alert.alert('Success', 'Order cancelled successfully.')
+              setOrderStatus('CANCELLED')
+              if (orderData) {
+                setOrderData({
+                  ...orderData,
+                  status: 'CANCELLED',
+                })
+              }
+            } else {
+              const msg = res.ok ? res.data?.error?.message : (res as any).error?.message
+              Alert.alert('Error', msg || 'Unable to cancel order.')
+            }
+          } catch (err) {
+            Alert.alert('Error', 'An unexpected error occurred.')
+          } finally {
+            setIsCanceling(false)
+          }
+        },
+      },
+    ])
   }
 
   const mapRef = useRef<MapView | null>(null)
@@ -1108,8 +1147,17 @@ export function OrderStatusScreen({
                 if (content && content.length > 0) {
                   const lastAssignment = content[0]
                   const reason = lastAssignment.cancellationReason || lastAssignment.rejectionReason || ''
-                  let who: 'Client' | 'Courier' | 'System' = 'Client'
-                  if (reason.toLowerCase().includes('courier')) {
+                  let who: 'User' | 'Courier' | 'System' = 'User'
+                  if (
+                    reason.toLowerCase().includes('user') ||
+                    reason.toLowerCase().includes('client') ||
+                    reason.toLowerCase().includes('customer')
+                  ) {
+                    who = 'User'
+                  } else if (
+                    reason.toLowerCase().includes('courier') ||
+                    reason.toLowerCase().includes('driver')
+                  ) {
                     who = 'Courier'
                   } else if (
                     reason.toLowerCase().includes('timeout') ||
@@ -1117,21 +1165,23 @@ export function OrderStatusScreen({
                     reason.toLowerCase().includes('no courier available')
                   ) {
                     who = 'System'
+                  } else {
+                    who = rawStatus === 'REJECTED' ? 'Courier' : 'User'
                   }
                   setCancellationInfo({
                     whoCancelled: who,
-                    reason: reason || (rawStatus === 'REJECTED' ? 'Order rejected by partner' : 'Courier requested cancellation'),
+                    reason: reason || (rawStatus === 'REJECTED' ? 'Order rejected by partner' : 'User cancelled'),
                   })
                 } else {
                   setCancellationInfo({
-                    whoCancelled: 'Courier',
-                    reason: rawStatus === 'REJECTED' ? 'Order rejected by partner' : 'Courier requested cancellation',
+                    whoCancelled: rawStatus === 'REJECTED' ? 'System' : 'User',
+                    reason: rawStatus === 'REJECTED' ? 'Order rejected by partner' : 'User cancelled',
                   })
                 }
               } else if (isActive) {
                 setCancellationInfo({
-                  whoCancelled: 'Courier',
-                  reason: rawStatus === 'REJECTED' ? 'Order rejected by partner' : 'Courier requested cancellation',
+                  whoCancelled: rawStatus === 'REJECTED' ? 'System' : 'User',
+                  reason: rawStatus === 'REJECTED' ? 'Order rejected by partner' : 'User cancelled',
                 })
               }
             } catch (err) {
@@ -1334,9 +1384,21 @@ export function OrderStatusScreen({
 
     Alert.alert(
       'Contact Courier',
-      `Call ${courierName || 'courier'}${courierPhone ? ` at ${courierPhone}` : ''}?`,
+      `How would you like to contact ${courierName || 'courier'}?`,
       [
         { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Chat (SMS)',
+          onPress: async () => {
+            const smsUrl = `sms:${courierPhone}`
+            const canOpen = await Linking.canOpenURL(smsUrl)
+            if (canOpen) {
+              await Linking.openURL(smsUrl)
+            } else {
+              Alert.alert('Error', 'Unable to open SMS messaging on this device')
+            }
+          },
+        },
         {
           text: 'Call',
           onPress: async () => {
@@ -2284,13 +2346,12 @@ export function OrderStatusScreen({
                   <>
                     <Pressable
                       accessibilityRole="button"
-                      onPress={() =>
-                        Alert.alert('Cancel order', 'Order cancellation is not connected yet.')
-                      }
-                      style={[styles.bottomButton, styles.secondaryButton]}
+                      disabled={isCanceling}
+                      onPress={handleCancelOrder}
+                      style={[styles.bottomButton, styles.secondaryButton, isCanceling && { opacity: 0.5 }]}
                     >
                       <Text allowFontScaling={false} style={styles.secondaryButtonText}>
-                        Cancel order
+                        {isCanceling ? 'Canceling...' : 'Cancel order'}
                       </Text>
                     </Pressable>
 

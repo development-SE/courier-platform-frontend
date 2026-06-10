@@ -6,7 +6,7 @@ type ApiError = {
 }
 
 const DEFAULT_BASE_URL = Platform.select({
-  android: 'http://10.202.3.82:8080',
+  android: 'http://10.202.3.82:808қ',
   ios: 'http://localhost:8080',
   default: 'http://localhost:8080',
 })
