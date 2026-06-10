@@ -148,6 +148,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
           if (
             refreshResponse.ok &&
+            refreshResponse.data &&
             refreshResponse.data.success &&
             refreshResponse.data.data?.accessToken &&
             refreshResponse.data.data?.refreshToken
@@ -161,7 +162,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             // Check if token is invalid or expired
             const isInvalidToken =
               (!refreshResponse.ok && refreshResponse.error?.status === 401) ||
-              (refreshResponse.ok && !refreshResponse.data.success)
+              (refreshResponse.ok && (!refreshResponse.data || !refreshResponse.data.success))
 
             if (isInvalidToken) {
               console.log('[AuthStore] Refresh token invalid/expired. Wiping auth state.');
@@ -206,7 +207,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         console.log('[AuthStore] Fetching auth profile for access token:', accessToken.slice(0, 15) + '...');
         const profileResponse = await getAuthProfile(accessToken)
         console.log('[AuthStore] Auth profile response ok:', profileResponse.ok);
-        if (profileResponse.ok && profileResponse.data.success && profileResponse.data.data) {
+        if (profileResponse.ok && profileResponse.data && profileResponse.data.success && profileResponse.data.data) {
           authProfile = profileResponse.data.data
         } else if (!profileResponse.ok && profileResponse.error?.status === 401) {
           isProfileUnauthorized = true
@@ -222,8 +223,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         console.log('[AuthStore] Fetching courier profile...');
         const courierResponse = await getMyCourierProfile(accessToken)
         console.log('[AuthStore] Courier profile response ok:', courierResponse.ok);
-        if (courierResponse.ok) {
-          if (courierResponse.data?.success && courierResponse.data?.data) {
+        if (courierResponse.ok && courierResponse.data) {
+          if (courierResponse.data.success && courierResponse.data.data) {
             courierProfile = courierResponse.data.data
           } else {
             isCourierNotFound = true

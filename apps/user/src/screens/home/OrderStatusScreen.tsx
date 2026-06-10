@@ -5,6 +5,7 @@ import {
   Easing,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -27,8 +28,8 @@ import { googleGeocode } from '../../data/googleMapsApi'
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { calculateRoute, decodeRoutePolyline, RoutePoint } from '../../data/routesApi'
-import { getUserOrder, mapOrderStatusToTrackingState, type TrackingState, updateOrderAddress, type UserOrderAddress } from '../../data/ordersApi'
-import { getOrderAssignment, getCourierLocation } from '../../data/logisticsApi'
+import { getUserOrder, mapOrderStatusToTrackingState, type UserOrder, type TrackingState, updateOrderAddress, type UserOrderAddress } from '../../data/ordersApi'
+import { getOrderAssignment, getCourierLocation, getCourierDetails } from '../../data/logisticsApi'
 
 type OrderStatusScreenProps = {
   accessToken?: string
@@ -44,15 +45,10 @@ type OrderStatusScreenProps = {
     quantity: number
   }[]
   onBackPress?: () => void
+  onReorder?: (items: { id: string; quantity: number }[]) => void
 }
 
-type DetailedStatus =
-  | 'Order received'
-  | 'Courier assigned'
-  | 'Going to restaurant'
-  | 'Picked up'
-  | 'On the way'
-  | 'Delivered'
+
 
 type EtaMode = 'preparing' | 'liveRoute' | 'delivered'
 const courierName = 'Aman'
@@ -87,42 +83,11 @@ const addressFields = [
   { key: 'doorCode', label: 'DOOR CODE' },
 ] as const
 
-const courierQuickReplies = ['I’m coming', 'Leave at door', 'Wait 5 min'] as const
 const courierAvatarUri =
   'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=160&q=80'
 
-type ChatMessage = {
-  id: string
-  text: string
-  time: string
-  sender: 'courier' | 'user'
-  showAvatar?: boolean
-}
-
-const initialCourierMessages: ChatMessage[] = [
-  {
-    id: 'courier-1',
-    text: "Hi! I'm near your building, but I can't find the entrance.",
-    time: '12:42 PM',
-    sender: 'courier',
-    showAvatar: true,
-  },
-  {
-    id: 'courier-2',
-    text: 'Please come outside if possible.',
-    time: '12:43 PM',
-    sender: 'courier',
-  },
-  {
-    id: 'user-1',
-    text: "No problem, I'm coming down now!",
-    time: '12:44 PM',
-    sender: 'user',
-  },
-] as const
-
 const statusPresentation: Record<
-  DetailedStatus,
+  string,
   {
     title: string
     subtitle: string
@@ -134,7 +99,17 @@ const statusPresentation: Record<
     cardVariant: 'eta' | 'delivered'
   }
 > = {
-  'Order received': {
+  NEW: {
+    title: 'Confirmed your order',
+    subtitle: 'Your order has been received and is being processed',
+    accentColor: '#a7391e',
+    milestoneIndex: 0,
+    etaStatusText: 'Preparing your order',
+    etaMode: 'preparing',
+    highlightActiveLabel: true,
+    cardVariant: 'eta',
+  },
+  ACCEPTED: {
     title: 'Confirmed your order',
     subtitle: 'Your order has been received and is being processed',
     accentColor: '#a7391e',
@@ -144,9 +119,9 @@ const statusPresentation: Record<
     highlightActiveLabel: true,
     cardVariant: 'eta',
   },
-  'Courier assigned': {
-    title: 'Confirmed your order',
-    subtitle: 'Your order has been received and a courier is assigned',
+  PREPARING: {
+    title: 'Preparing your order',
+    subtitle: 'The restaurant is preparing your food',
     accentColor: '#a7391e',
     milestoneIndex: 1,
     etaStatusText: 'Preparing your order',
@@ -154,9 +129,29 @@ const statusPresentation: Record<
     highlightActiveLabel: true,
     cardVariant: 'eta',
   },
-  'Going to restaurant': {
-    title: `Courier ${courierName} is on the way`,
-    subtitle: 'Courier assigned',
+  READY: {
+    title: 'Order is ready',
+    subtitle: 'Your food is ready and waiting for the courier',
+    accentColor: '#a7391e',
+    milestoneIndex: 1,
+    etaStatusText: 'Preparing your order',
+    etaMode: 'preparing',
+    highlightActiveLabel: true,
+    cardVariant: 'eta',
+  },
+  ASSIGNMENT_PENDING: {
+    title: 'Finding a courier',
+    subtitle: 'We are searching for a nearby courier to deliver your food',
+    accentColor: '#a7391e',
+    milestoneIndex: 1,
+    etaStatusText: 'Preparing your order',
+    etaMode: 'preparing',
+    highlightActiveLabel: true,
+    cardVariant: 'eta',
+  },
+  ASSIGNED: {
+    title: `Courier ${courierName} is assigned`,
+    subtitle: 'Courier is heading to the restaurant',
     accentColor: '#a7391e',
     milestoneIndex: 2,
     etaStatusText: 'On the way',
@@ -164,9 +159,9 @@ const statusPresentation: Record<
     highlightActiveLabel: false,
     cardVariant: 'eta',
   },
-  'Picked up': {
-    title: `Courier ${courierName} is on the way`,
-    subtitle: 'Courier assigned',
+  PICKED_UP: {
+    title: `Courier ${courierName} picked up your food`,
+    subtitle: 'Courier is on the way to your address',
     accentColor: '#a7391e',
     milestoneIndex: 2,
     etaStatusText: 'On the way',
@@ -174,9 +169,9 @@ const statusPresentation: Record<
     highlightActiveLabel: false,
     cardVariant: 'eta',
   },
-  'On the way': {
+  IN_TRANSIT: {
     title: `Courier ${courierName} is on the way`,
-    subtitle: 'Courier assigned',
+    subtitle: 'Courier is delivering your food',
     accentColor: '#a7391e',
     milestoneIndex: 2,
     etaStatusText: 'On the way',
@@ -184,12 +179,42 @@ const statusPresentation: Record<
     highlightActiveLabel: false,
     cardVariant: 'eta',
   },
-  Delivered: {
+  DELIVERY_CONFIRMATION_PENDING: {
+    title: 'Courier has arrived',
+    subtitle: 'Please share the delivery confirmation code with your courier',
+    accentColor: '#a7391e',
+    milestoneIndex: 3,
+    etaStatusText: 'Arrived',
+    etaMode: 'liveRoute',
+    highlightActiveLabel: false,
+    cardVariant: 'eta',
+  },
+  DELIVERED: {
     title: 'Order delivered',
     subtitle: 'Your order has been delivered! Please take a moment to rate your experience.',
     accentColor: '#446744',
-    milestoneIndex: 3,
+    milestoneIndex: 4,
     etaStatusText: 'Delivered successfully',
+    etaMode: 'delivered',
+    highlightActiveLabel: false,
+    cardVariant: 'delivered',
+  },
+  CANCELLED: {
+    title: 'Order cancelled',
+    subtitle: 'This order has been cancelled',
+    accentColor: '#6B7280',
+    milestoneIndex: 0,
+    etaStatusText: 'Cancelled',
+    etaMode: 'delivered',
+    highlightActiveLabel: false,
+    cardVariant: 'delivered',
+  },
+  REJECTED: {
+    title: 'Order rejected',
+    subtitle: 'This order has been rejected',
+    accentColor: '#EF4444',
+    milestoneIndex: 0,
+    etaStatusText: 'Rejected',
     etaMode: 'delivered',
     highlightActiveLabel: false,
     cardVariant: 'delivered',
@@ -207,6 +232,7 @@ export function OrderStatusScreen({
   total,
   orderedItems,
   onBackPress,
+  onReorder,
 }: OrderStatusScreenProps) {
   const insets = useSafeAreaInsets()
   const { height } = useWindowDimensions()
@@ -217,9 +243,15 @@ export function OrderStatusScreen({
   )
   const [distanceMeters, setDistanceMeters] = useState(4200)
   const [durationSeconds, setDurationSeconds] = useState(50 * 60)
-  const [detailedStatus, setDetailedStatus] = useState<DetailedStatus>('Order received')
   const [orderStatus, setOrderStatus] = useState<string>('NEW')
+  const [orderData, setOrderData] = useState<UserOrder | null>(null)
+  const [cancellationInfo, setCancellationInfo] = useState<{
+    whoCancelled: 'Client' | 'Courier' | 'System'
+    reason: string
+  } | null>(null)
   const [courierId, setCourierId] = useState<string | null>(null)
+  const [courierPhone, setCourierPhone] = useState<string | null>(null)
+  const [courierName, setCourierName] = useState<string | null>(null)
   const [realCourierLocation, setRealCourierLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [courierOnline, setCourierOnline] = useState<boolean>(false)
   const [clientGpsCoords, setClientGpsCoords] = useState<{ latitude: number; longitude: number } | null>(null)
@@ -234,10 +266,7 @@ export function OrderStatusScreen({
   const isAddressModalVisibleRef = useRef(false)
   isAddressModalVisibleRef.current = isAddressModalVisible
   const [isOrderDetailsVisible, setIsOrderDetailsVisible] = useState(false)
-  const [isCourierChatVisible, setIsCourierChatVisible] = useState(false)
   const [isDeliveryCompleteVisible, setIsDeliveryCompleteVisible] = useState(false)
-  const [chatDraft, setChatDraft] = useState('')
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([...initialCourierMessages])
   const [selectedRating, setSelectedRating] = useState(0)
   const [addressDetails, setAddressDetails] = useState({
     house: '',
@@ -297,7 +326,6 @@ export function OrderStatusScreen({
   }
 
   const mapRef = useRef<MapView | null>(null)
-  const chatScrollRef = useRef<ScrollView | null>(null)
   const courierMarker = useRef(
     new AnimatedRegion({
       latitude: courierStartLocation.latitude,
@@ -338,23 +366,19 @@ export function OrderStatusScreen({
 
   const currentStatusUi = useMemo(() => {
     const s = orderStatus.toUpperCase()
-    const etaMode = ['DELIVERED', 'CANCELLED', 'REJECTED'].includes(s)
-      ? 'delivered'
-      : ['NEW', 'ACCEPTED', 'PREPARING', 'READY', 'ASSIGNMENT_PENDING'].includes(s)
-      ? 'preparing'
-      : 'liveRoute'
+    const meta = statusPresentation[s] || statusPresentation.NEW
 
     return {
-      title: trackingState.title,
-      subtitle: trackingState.subtitle,
-      accentColor: trackingState.statusColor,
-      milestoneIndex: trackingState.currentStep,
-      etaStatusText: trackingState.title,
-      etaMode,
-      highlightActiveLabel: etaMode === 'preparing',
-      cardVariant: etaMode === 'delivered' ? 'delivered' : ('eta' as const),
+      title: meta.title,
+      subtitle: meta.subtitle,
+      accentColor: meta.accentColor,
+      milestoneIndex: meta.milestoneIndex,
+      etaStatusText: meta.etaStatusText,
+      etaMode: meta.etaMode,
+      highlightActiveLabel: meta.highlightActiveLabel,
+      cardVariant: meta.cardVariant,
     }
-  }, [trackingState, orderStatus])
+  }, [orderStatus])
 
   const animatedCourierCoordinate = courierMarker as unknown as LatLng
 
@@ -844,7 +868,6 @@ export function OrderStatusScreen({
     })
     setIsDeliveryCompleteVisible(false)
     setSelectedRating(0)
-    setDetailedStatus('Order received')
     setOrderStatus('ACCEPTED')
     setDeliveryCode(null)
     setMilestoneIndex(1)
@@ -854,7 +877,6 @@ export function OrderStatusScreen({
 
     statusTimersRef.current = [
       setTimeout(() => {
-        setDetailedStatus('On the way')
         setOrderStatus('IN_TRANSIT')
         setMilestoneIndex(2)
         animateProgressTo(2)
@@ -873,14 +895,12 @@ export function OrderStatusScreen({
         }
       }, 4500),
       setTimeout(() => {
-        setDetailedStatus('Picked up')
         setOrderStatus('DELIVERY_CONFIRMATION_PENDING')
         setDeliveryCode('482910')
         setMilestoneIndex(3)
         animateProgressTo(3)
       }, 7000),
       setTimeout(() => {
-        setDetailedStatus('Delivered')
         setOrderStatus('DELIVERED')
         setMilestoneIndex(4)
         setDurationSeconds(0)
@@ -1041,40 +1061,83 @@ export function OrderStatusScreen({
 
         const rawStatus = latestOrder.status || 'NEW'
         setOrderStatus(rawStatus)
+        setOrderData(latestOrder)
         const nextTrackingState = mapOrderStatusToTrackingState(rawStatus)
         const nextMilestone = nextTrackingState.currentStep
         setMilestoneIndex(nextMilestone)
         animateProgressTo(nextMilestone)
 
-        if (rawStatus === 'DELIVERED') {
-          setIsDeliveryCompleteVisible(prev => {
-            if (!prev) {
-              completionOpacity.setValue(0)
-              completionTranslateY.setValue(24)
-              completionScale.setValue(0.82)
-              Animated.parallel([
-                Animated.timing(completionOpacity, {
-                  toValue: 1,
-                  duration: 260,
-                  easing: Easing.out(Easing.cubic),
-                  useNativeDriver: true,
-                }),
-                Animated.timing(completionTranslateY, {
-                  toValue: 0,
-                  duration: 320,
-                  easing: Easing.out(Easing.cubic),
-                  useNativeDriver: true,
-                }),
-                Animated.spring(completionScale, {
-                  toValue: 1,
-                  friction: 7,
-                  tension: 90,
-                  useNativeDriver: true,
-                }),
-              ]).start()
+        const isTerminal = ['DELIVERED', 'CANCELLED', 'REJECTED'].includes(rawStatus)
+        if (isTerminal) {
+          if (rawStatus === 'DELIVERED') {
+            setIsDeliveryCompleteVisible(prev => {
+              if (!prev) {
+                completionOpacity.setValue(0)
+                completionTranslateY.setValue(24)
+                completionScale.setValue(0.82)
+                Animated.parallel([
+                  Animated.timing(completionOpacity, {
+                    toValue: 1,
+                    duration: 260,
+                    easing: Easing.out(Easing.cubic),
+                    useNativeDriver: true,
+                  }),
+                  Animated.timing(completionTranslateY, {
+                    toValue: 0,
+                    duration: 320,
+                    easing: Easing.out(Easing.cubic),
+                    useNativeDriver: true,
+                  }),
+                  Animated.spring(completionScale, {
+                    toValue: 1,
+                    friction: 7,
+                    tension: 90,
+                    useNativeDriver: true,
+                  }),
+                ]).start()
+              }
+              return true
+            })
+          }
+          if (rawStatus === 'CANCELLED' || rawStatus === 'REJECTED') {
+            // Fetch cancellation details from assignment service
+            try {
+              const assignRes = await getOrderAssignment(accessToken, orderId)
+              if (isActive && assignRes.ok && assignRes.data.success && assignRes.data.data) {
+                const content = assignRes.data.data.content
+                if (content && content.length > 0) {
+                  const lastAssignment = content[0]
+                  const reason = lastAssignment.cancellationReason || lastAssignment.rejectionReason || ''
+                  let who: 'Client' | 'Courier' | 'System' = 'Client'
+                  if (reason.toLowerCase().includes('courier')) {
+                    who = 'Courier'
+                  } else if (
+                    reason.toLowerCase().includes('timeout') ||
+                    reason.toLowerCase().includes('system') ||
+                    reason.toLowerCase().includes('no courier available')
+                  ) {
+                    who = 'System'
+                  }
+                  setCancellationInfo({
+                    whoCancelled: who,
+                    reason: reason || (rawStatus === 'REJECTED' ? 'Order rejected by partner' : 'Courier requested cancellation'),
+                  })
+                } else {
+                  setCancellationInfo({
+                    whoCancelled: 'Courier',
+                    reason: rawStatus === 'REJECTED' ? 'Order rejected by partner' : 'Courier requested cancellation',
+                  })
+                }
+              } else if (isActive) {
+                setCancellationInfo({
+                  whoCancelled: 'Courier',
+                  reason: rawStatus === 'REJECTED' ? 'Order rejected by partner' : 'Courier requested cancellation',
+                })
+              }
+            } catch (err) {
+              console.log('Error fetching cancellation details:', err)
             }
-            return true
-          })
+          }
           setDurationSeconds(0)
           setCourierId(null)
           setRealCourierLocation(null)
@@ -1090,6 +1153,14 @@ export function OrderStatusScreen({
             const activeAssign = content[0]
             if (activeAssign.courierId) {
               setCourierId(activeAssign.courierId)
+
+              // Fetch courier details (name, phone)
+              const detailsRes = await getCourierDetails(accessToken, activeAssign.courierId)
+              if (isActive && detailsRes.ok && detailsRes.data.success && detailsRes.data.data) {
+                const courierData = detailsRes.data.data
+                setCourierPhone(courierData.phone || null)
+                setCourierName(courierData.name ? `${courierData.name}${courierData.surname ? ' ' + courierData.surname : ''}` : null)
+              }
 
               const locRes = await getCourierLocation(accessToken, activeAssign.courierId)
               if (!isActive) return
@@ -1176,18 +1247,6 @@ export function OrderStatusScreen({
     }
   }, [orderStatus])
 
-  const scrollChatToBottom = useCallback(() => {
-    requestAnimationFrame(() => {
-      chatScrollRef.current?.scrollToEnd({ animated: true })
-    })
-  }, [])
-
-  useEffect(() => {
-    if (isCourierChatVisible) {
-      scrollChatToBottom()
-    }
-  }, [chatMessages.length, isCourierChatVisible, scrollChatToBottom])
-
   useEffect(() => {
     if (!isDeliveryCompleteVisible) {
       completionOuterPulse.setValue(0)
@@ -1267,52 +1326,60 @@ export function OrderStatusScreen({
     isDeliveryCompleteVisible,
   ])
 
-  const openCourierChat = () => {
-    setIsCourierChatVisible(true)
+  const openCourierChat = async () => {
+    if (!courierPhone) {
+      Alert.alert('Unavailable', 'Courier contact information is not available yet. Please wait until a courier is assigned.')
+      return
+    }
+
+    Alert.alert(
+      'Contact Courier',
+      `Call ${courierName || 'courier'}${courierPhone ? ` at ${courierPhone}` : ''}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Call',
+          onPress: async () => {
+            const phoneUrl = `tel:${courierPhone}`
+            const canOpen = await Linking.canOpenURL(phoneUrl)
+            if (canOpen) {
+              await Linking.openURL(phoneUrl)
+            } else {
+              Alert.alert('Error', 'Unable to make phone calls on this device')
+            }
+          },
+        },
+      ]
+    )
   }
 
-  const pushUserChatMessage = useCallback(
-    (messageText: string) => {
-      const normalized = messageText.trim()
-
-      if (!normalized) {
-        return
-      }
-
-      const time = new Date().toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-
-      setChatMessages(current => [
-        ...current,
-        {
-          id: `user-${Date.now()}`,
-          text: normalized,
-          time,
-          sender: 'user',
-        },
-      ])
-      setChatDraft('')
-    },
-    [],
-  )
+  const handleReorder = () => {
+    if (onReorder && orderItems.length > 0) {
+      onReorder(orderItems.map(item => ({ id: item.id, quantity: item.quantity })))
+    } else {
+      onBackPress?.()
+    }
+  }
 
   const renderStatusCard = () => {
     if (currentStatusUi.cardVariant === 'delivered') {
+      const upperStatus = orderStatus.toUpperCase()
+      const isCancelled = ['CANCELLED', 'REJECTED'].includes(upperStatus)
+      const iconName = isCancelled ? (upperStatus === 'CANCELLED' ? 'x' : 'slash') : 'check'
+
       return (
-        <View style={[styles.etaCard, styles.deliveredCard]}>
+        <View style={[styles.etaCard, styles.deliveredCard, isCancelled && { backgroundColor: '#F2F4F6' }]}>
           <View style={styles.deliveredCopy}>
-            <Text allowFontScaling={false} style={styles.deliveredTitle}>
-              Order delivered
+            <Text allowFontScaling={false} style={[styles.deliveredTitle, isCancelled && { color: '#191C1E' }]}>
+              {currentStatusUi.title}
             </Text>
-            <Text allowFontScaling={false} style={styles.deliveredSubtitle}>
-              Your order has been delivered! Please take a moment to rate your experience.
+            <Text allowFontScaling={false} style={[styles.deliveredSubtitle, isCancelled && { color: '#58423C' }]}>
+              {currentStatusUi.subtitle}
             </Text>
           </View>
 
-          <View style={styles.deliveredIconCircle}>
-            <Feather name="check" size={28} color="#ffffff" />
+          <View style={[styles.deliveredIconCircle, isCancelled && { backgroundColor: currentStatusUi.accentColor }]}>
+            <Feather name={iconName} size={isCancelled ? 20 : 28} color="#ffffff" />
           </View>
         </View>
       )
@@ -1587,10 +1654,7 @@ export function OrderStatusScreen({
 
             <Pressable
               accessibilityRole="button"
-              onPress={() => {
-                setIsOrderDetailsVisible(false)
-                openCourierChat()
-              }}
+              onPress={openCourierChat}
               style={styles.detailsAction}
             >
               <View style={styles.detailsActionCircle}>
@@ -1690,207 +1754,6 @@ export function OrderStatusScreen({
           </View>
         </ScrollView>
       </View>
-    </Modal>
-  )
-
-  const renderCourierChatModal = () => (
-    <Modal
-      visible={isCourierChatVisible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={() => setIsCourierChatVisible(false)}
-    >
-      <KeyboardAvoidingView
-        style={styles.chatScreen}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View style={[styles.chatHeader, { paddingTop: insets.top + 12 }]}>
-          <View style={styles.chatHeaderLeft}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setIsCourierChatVisible(false)}
-              style={styles.chatHeaderBack}
-            >
-              <Feather name="arrow-left" size={18} color="#191c1e" />
-            </Pressable>
-
-            <View style={styles.chatCourierMeta}>
-              <View style={styles.chatAvatarWrap}>
-                <Image source={{ uri: courierAvatarUri }} resizeMode="cover" style={styles.chatAvatar} />
-                <View style={styles.chatAvatarStatus} />
-              </View>
-
-              <View style={styles.chatCourierTextWrap}>
-                <Text allowFontScaling={false} style={styles.chatCourierName}>
-                  Courier Aman
-                </Text>
-                <Text allowFontScaling={false} style={styles.chatCourierStatus}>
-                  Online
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => Alert.alert('Call courier', '+1 (555) 123-4567')}
-            style={styles.chatCallButton}
-          >
-            <Feather name="phone-call" size={16} color="#ff7a59" />
-          </Pressable>
-        </View>
-
-        <ScrollView
-          ref={chatScrollRef}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.chatContent,
-            {
-              paddingTop: insets.top + 84,
-              paddingBottom: 188 + Math.max(insets.bottom, 16),
-            },
-          ]}
-        >
-          <View style={styles.chatDateWrap}>
-            <View style={styles.chatDateChip}>
-              <Text allowFontScaling={false} style={styles.chatDateText}>
-                Today, 12:42 PM
-              </Text>
-            </View>
-          </View>
-
-          {chatMessages.map((message, index) => {
-            const isCourier = message.sender === 'courier'
-            const showAvatar = Boolean(isCourier && message.showAvatar)
-            const previousMessage = index > 0 ? chatMessages[index - 1] : null
-            const isStackedCourier =
-              isCourier && previousMessage?.sender === 'courier' && !message.showAvatar
-
-            if (isCourier) {
-              return (
-                <View
-                  key={message.id}
-                  style={[
-                    styles.chatIncomingRow,
-                    isStackedCourier && styles.chatIncomingRowStacked,
-                  ]}
-                >
-                  {showAvatar ? (
-                    <Image source={{ uri: courierAvatarUri }} resizeMode="cover" style={styles.chatBubbleAvatar} />
-                  ) : (
-                    <View style={styles.chatBubbleAvatarSpacer} />
-                  )}
-
-                  <View style={styles.chatIncomingGroup}>
-                    <View
-                      style={[
-                        styles.chatIncomingBubble,
-                        showAvatar ? styles.chatIncomingBubbleWithTail : styles.chatIncomingBubbleStacked,
-                      ]}
-                    >
-                      <Text allowFontScaling={false} style={styles.chatIncomingText}>
-                        {message.text}
-                      </Text>
-                    </View>
-
-                    <Text allowFontScaling={false} style={styles.chatMetaText}>
-                      {message.time}
-                    </Text>
-                  </View>
-                </View>
-              )
-            }
-
-            return (
-              <View key={message.id} style={styles.chatOutgoingWrap}>
-                <View style={styles.chatOutgoingBubble}>
-                  <Text allowFontScaling={false} style={styles.chatOutgoingText}>
-                    {message.text}
-                  </Text>
-                </View>
-
-                <View style={styles.chatOutgoingMetaRow}>
-                  <Text allowFontScaling={false} style={styles.chatMetaText}>
-                    {message.time}
-                  </Text>
-                  <Feather name="check" size={10} color="#a7391e" />
-                </View>
-              </View>
-            )
-          })}
-        </ScrollView>
-
-        <View style={[styles.chatComposerShell, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chatQuickReplies}
-          >
-            {courierQuickReplies.map(reply => {
-              const isPrimary = reply === 'I’m coming'
-              const isSecondary = reply === 'Leave at door'
-
-              return (
-                <Pressable
-                  key={reply}
-                  accessibilityRole="button"
-                  onPress={() => pushUserChatMessage(reply)}
-                  style={[
-                    styles.chatReplyChip,
-                    isPrimary && styles.chatReplyChipPrimary,
-                    isSecondary && styles.chatReplyChipSecondary,
-                  ]}
-                >
-                  <Text
-                    allowFontScaling={false}
-                    style={[
-                      styles.chatReplyText,
-                      isPrimary && styles.chatReplyTextPrimary,
-                      isSecondary && styles.chatReplyTextSecondary,
-                    ]}
-                  >
-                    {reply}
-                  </Text>
-                </Pressable>
-              )
-            })}
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => Alert.alert('Call courier', '+1 (555) 123-4567')}
-              style={styles.chatReplyChip}
-            >
-              <Feather name="phone-call" size={12} color="#191c1e" />
-              <Text allowFontScaling={false} style={styles.chatReplyText}>
-                Call me
-              </Text>
-            </Pressable>
-          </ScrollView>
-
-          <View style={styles.chatComposerRow}>
-            <Pressable accessibilityRole="button" style={styles.chatPlusButton}>
-              <Feather name="plus-circle" size={20} color="#58423c" />
-            </Pressable>
-
-            <TextInput
-              value={chatDraft}
-              onChangeText={setChatDraft}
-              placeholder="Write a message..."
-              placeholderTextColor="rgba(88, 66, 60, 0.60)"
-              selectionColor="#ff7a59"
-              style={styles.chatInput}
-            />
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => pushUserChatMessage(chatDraft)}
-              style={styles.chatSendButton}
-            >
-              <Feather name="send" size={14} color="#701500" />
-            </Pressable>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
     </Modal>
   )
 
@@ -2160,172 +2023,288 @@ export function OrderStatusScreen({
 
               {renderStatusCard()}
 
-              <View style={styles.progressBlock}>
-                <View style={styles.progressTrack}>
-                  <View style={styles.progressBase} />
-                  <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
+              {orderStatus.toUpperCase() === 'CANCELLED' ? (
+                <>
+                  <View style={styles.cancellationCard}>
+                    <Text allowFontScaling={false} style={styles.cancellationHeader}>CANCELLATION DETAILS</Text>
+                    
+                    <View style={styles.cancellationField}>
+                      <Text allowFontScaling={false} style={styles.cancellationLabel}>Who cancelled:</Text>
+                      <Text allowFontScaling={false} style={styles.cancellationValue}>
+                        {cancellationInfo?.whoCancelled || 'Courier'}
+                      </Text>
+                    </View>
 
-                  {progressSteps.map((step, index) => {
-                    const isComplete = index < completedStepCount
-                    const isActive = index === activeStepIndex
+                    <View style={styles.cancellationField}>
+                      <Text allowFontScaling={false} style={styles.cancellationLabel}>Reason:</Text>
+                      <Text allowFontScaling={false} style={styles.cancellationValue}>
+                        {cancellationInfo?.reason || 'Client requested cancellation'}
+                      </Text>
+                    </View>
 
-                    return (
-                      <View key={step.key} style={styles.progressNodeWrap}>
-                        <View
-                          style={[
-                            styles.progressNode,
-                            isComplete && styles.progressNodeComplete,
-                            isActive && styles.progressNodeActive,
-                            isActive && {
-                              backgroundColor: currentStatusUi.accentColor,
-                              shadowColor: currentStatusUi.accentColor,
-                            },
-                          ]}
-                        >
-                          {isComplete ? <Feather name="check" size={11} color="#ffffff" /> : null}
-                          {isActive && step.key === 'preparing' ? (
-                            <Feather
-                              name="package"
-                              size={12}
-                              color="#ffffff"
-                            />
-                          ) : null}
-                          {isActive && step.key === 'onWay' ? (
-                            <MaterialCommunityIcons
-                              name="bike-fast"
-                              size={14}
-                              color="#ffffff"
-                            />
-                          ) : null}
-                          {isActive && step.key === 'arrived' ? (
-                            <Feather
-                              name="map-pin"
-                              size={12}
-                              color="#ffffff"
-                            />
-                          ) : null}
-                          {isActive && step.key === 'delivered' ? (
-                            <Feather
-                              name="check"
-                              size={12}
-                              color="#ffffff"
-                            />
-                          ) : null}
-                        </View>
+                    <View style={styles.cancellationSeparator} />
+
+                    <Text allowFontScaling={false} style={styles.cancellationSubHeader}>Order Snapshot</Text>
+
+                    <View style={styles.snapshotRow}>
+                      <Feather name="map-pin" size={14} color="#862208" style={styles.snapshotIcon} />
+                      <View style={styles.snapshotTextContainer}>
+                        <Text allowFontScaling={false} style={styles.snapshotLabel}>Pickup</Text>
+                        <Text allowFontScaling={false} style={styles.snapshotValue}>{restaurantName}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.snapshotRow}>
+                      <Feather name="navigation" size={14} color="#004397" style={styles.snapshotIcon} />
+                      <View style={styles.snapshotTextContainer}>
+                        <Text allowFontScaling={false} style={styles.snapshotLabel}>Dropoff</Text>
+                        <Text allowFontScaling={false} style={styles.snapshotValue}>
+                          {deliveryAddress
+                            ? `${deliveryAddress.street || ''}${deliveryAddress.house ? `, ${deliveryAddress.house}` : ''}${deliveryAddress.entrance ? `, Entrance ${deliveryAddress.entrance}` : ''}${deliveryAddress.floor ? `, Floor ${deliveryAddress.floor}` : ''}${deliveryAddress.apartment ? `, Apt ${deliveryAddress.apartment}` : ''}`
+                            : 'Astana, Uly Dala Ave, 8'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.snapshotGrid}>
+                      <View style={styles.snapshotGridItem}>
+                        <Text allowFontScaling={false} style={styles.snapshotGridLabel}>Parcel Size</Text>
+                        <Text allowFontScaling={false} style={styles.snapshotGridValue}>
+                          {orderData?.parcelSize ? orderData.parcelSize.charAt(0) + orderData.parcelSize.slice(1).toLowerCase() : 'Small'}
+                        </Text>
+                      </View>
+                      <View style={styles.snapshotGridItem}>
+                        <Text allowFontScaling={false} style={styles.snapshotGridLabel}>Service Type</Text>
+                        <Text allowFontScaling={false} style={styles.snapshotGridValue}>
+                          {orderData?.serviceType ? orderData.serviceType.charAt(0) + orderData.serviceType.slice(1).toLowerCase() : 'Standard'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.financialCard}>
+                    <Text allowFontScaling={false} style={styles.financialHeader}>FINANCIAL SUMMARY</Text>
+                    
+                    <View style={styles.financialRow}>
+                      <View style={styles.financialStatusWrap}>
+                        <Feather 
+                          name={total > 0 ? "refresh-ccw" : "info"} 
+                          size={16} 
+                          color={total > 0 ? "#2C4E2E" : "#6B7280"} 
+                          style={styles.financialStatusIcon}
+                        />
+                        <Text allowFontScaling={false} style={styles.financialStatusText}>
+                          {total > 0 
+                            ? `Refund of ₸${Math.round(total * 450).toLocaleString()} initiated`
+                            : "You were not charged"}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.financialRow}>
+                      <Text allowFontScaling={false} style={styles.financialFeeLabel}>Delivery Fee</Text>
+                      <Text allowFontScaling={false} style={styles.financialFeeStruck}>
+                        ₸1,200
+                      </Text>
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.progressBlock}>
+                    <View style={styles.progressTrack}>
+                      <View style={styles.progressBase} />
+                      <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
+
+                      {progressSteps.map((step, index) => {
+                        const isComplete = index < completedStepCount
+                        const isActive = index === activeStepIndex
+
+                        return (
+                          <View key={step.key} style={styles.progressNodeWrap}>
+                            <View
+                              style={[
+                                styles.progressNode,
+                                isComplete && styles.progressNodeComplete,
+                                isActive && styles.progressNodeActive,
+                                isActive && {
+                                  backgroundColor: currentStatusUi.accentColor,
+                                  shadowColor: currentStatusUi.accentColor,
+                                },
+                              ]}
+                            >
+                              {isComplete ? <Feather name="check" size={11} color="#ffffff" /> : null}
+                              {isActive && step.key === 'preparing' ? (
+                                <Feather
+                                  name="package"
+                                  size={12}
+                                  color="#ffffff"
+                                />
+                              ) : null}
+                              {isActive && step.key === 'onWay' ? (
+                                <MaterialCommunityIcons
+                                  name="bike-fast"
+                                  size={14}
+                                  color="#ffffff"
+                                />
+                              ) : null}
+                              {isActive && step.key === 'arrived' ? (
+                                <Feather
+                                  name="map-pin"
+                                  size={12}
+                                  color="#ffffff"
+                                />
+                              ) : null}
+                              {isActive && step.key === 'delivered' ? (
+                                <Feather
+                                  name="check"
+                                  size={12}
+                                  color="#ffffff"
+                                />
+                              ) : null}
+                            </View>
+                          </View>
+                        )
+                      })}
+                    </View>
+
+                    <View style={styles.progressLabels}>
+                      {progressSteps.map((step, index) => {
+                        const isActive = index === activeStepIndex
+
+                        return (
+                          <Text
+                            key={step.key}
+                            allowFontScaling={false}
+                            style={[
+                              styles.progressLabel,
+                              getProgressLabelStyle(index),
+                              isActive && currentStatusUi.highlightActiveLabel && styles.progressLabelActive,
+                              isActive &&
+                                currentStatusUi.highlightActiveLabel && { color: currentStatusUi.accentColor },
+                            ]}
+                          >
+                            {step.label}
+                          </Text>
+                        )
+                      })}
+                    </View>
+                  </View>
+
+                  {trackingState.showConfirmationCode ? (
+                    deliveryCode ? (
+                      <View style={styles.codeCard}>
+                        <Text style={styles.codeLabel}>Delivery confirmation code</Text>
+                        <Text style={styles.codeValue}>{deliveryCode}</Text>
+                        <Text style={styles.codeSubtitle}>Share this code with your courier</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.codeCardExpired}>
+                        <Text style={styles.codeExpiredLabel}>Код истёк</Text>
+                        <Text style={styles.codeExpiredHint}>
+                          Попросите курьера отправить код повторно
+                        </Text>
                       </View>
                     )
-                  })}
-                </View>
+                  ) : null}
 
-                <View style={styles.progressLabels}>
-                  {progressSteps.map((step, index) => {
-                    const isActive = index === activeStepIndex
-
-                    return (
-                      <Text
-                        key={step.key}
-                        allowFontScaling={false}
-                        style={[
-                          styles.progressLabel,
-                          getProgressLabelStyle(index),
-                          isActive && currentStatusUi.highlightActiveLabel && styles.progressLabelActive,
-                          isActive &&
-                            currentStatusUi.highlightActiveLabel && { color: currentStatusUi.accentColor },
-                        ]}
-                      >
-                        {step.label}
+                  <View style={styles.quickActions}>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={openCourierChat}
+                      style={styles.quickAction}
+                    >
+                      <View style={[styles.quickIconCircle, styles.quickIconCourier]}>
+                        <Feather name="phone-call" size={20} color="#862208" />
+                      </View>
+                      <Text allowFontScaling={false} style={styles.quickActionLabel}>
+                        Contact{'\n'}courier
                       </Text>
-                    )
-                  })}
-                </View>
-              </View>
+                    </Pressable>
 
-              {trackingState.showConfirmationCode ? (
-                deliveryCode ? (
-                  <View style={styles.codeCard}>
-                    <Text style={styles.codeLabel}>Delivery confirmation code</Text>
-                    <Text style={styles.codeValue}>{deliveryCode}</Text>
-                    <Text style={styles.codeSubtitle}>Share this code with your courier</Text>
-                  </View>
-                ) : (
-                  <View style={styles.codeCardExpired}>
-                    <Text style={styles.codeExpiredLabel}>Код истёк</Text>
-                    <Text style={styles.codeExpiredHint}>
-                      Попросите курьера отправить код повторно
-                    </Text>
-                  </View>
-                )
-              ) : null}
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={openAddressModal}
+                      style={styles.quickAction}
+                    >
+                      <View style={[styles.quickIconCircle, styles.quickIconAddress]}>
+                        <Feather name="home" size={20} color="#004397" />
+                      </View>
+                      <Text allowFontScaling={false} style={styles.quickActionLabel}>
+                        Address{'\n'}details
+                      </Text>
+                    </Pressable>
 
-              <View style={styles.quickActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={openCourierChat}
-                  style={styles.quickAction}
-                >
-                  <View style={[styles.quickIconCircle, styles.quickIconCourier]}>
-                    <Feather name="phone-call" size={20} color="#862208" />
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => setIsOrderDetailsVisible(true)}
+                      style={styles.quickAction}
+                    >
+                      <View style={[styles.quickIconCircle, styles.quickIconOrder]}>
+                        <MaterialCommunityIcons
+                          name="clipboard-text-outline"
+                          size={20}
+                          color="#58423c"
+                        />
+                      </View>
+                      <Text allowFontScaling={false} style={styles.quickActionLabel}>
+                        Order{'\n'}details
+                      </Text>
+                    </Pressable>
                   </View>
-                  <Text allowFontScaling={false} style={styles.quickActionLabel}>
-                    Contact{'\n'}courier
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={openAddressModal}
-                  style={styles.quickAction}
-                >
-                  <View style={[styles.quickIconCircle, styles.quickIconAddress]}>
-                    <Feather name="home" size={20} color="#004397" />
-                  </View>
-                  <Text allowFontScaling={false} style={styles.quickActionLabel}>
-                    Address{'\n'}details
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => setIsOrderDetailsVisible(true)}
-                  style={styles.quickAction}
-                >
-                  <View style={[styles.quickIconCircle, styles.quickIconOrder]}>
-                    <MaterialCommunityIcons
-                      name="clipboard-text-outline"
-                      size={20}
-                      color="#58423c"
-                    />
-                  </View>
-                  <Text allowFontScaling={false} style={styles.quickActionLabel}>
-                    Order{'\n'}details
-                  </Text>
-                </Pressable>
-              </View>
+                </>
+              )}
 
 
 
               <View style={styles.bottomActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() =>
-                    Alert.alert('Cancel order', 'Order cancellation is not connected yet.')
-                  }
-                  style={[styles.bottomButton, styles.secondaryButton]}
-                >
-                  <Text allowFontScaling={false} style={styles.secondaryButtonText}>
-                    Cancel order
-                  </Text>
-                </Pressable>
+                {orderStatus.toUpperCase() === 'CANCELLED' ? (
+                  <>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={handleReorder}
+                      style={[styles.bottomButton, styles.primaryButton, { marginLeft: 0, marginRight: 8 }]}
+                    >
+                      <Text allowFontScaling={false} style={styles.primaryButtonText}>
+                        Reorder
+                      </Text>
+                    </Pressable>
 
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => Alert.alert('Support', 'Support chat is coming soon.')}
-                  style={[styles.bottomButton, styles.primaryButton]}
-                >
-                  <Text allowFontScaling={false} style={styles.primaryButtonText}>
-                    Support
-                  </Text>
-                </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => Alert.alert('Support', 'Support chat is coming soon.')}
+                      style={[styles.bottomButton, styles.secondaryButton, { marginLeft: 8, marginRight: 0 }]}
+                    >
+                      <Text allowFontScaling={false} style={styles.secondaryButtonText}>
+                        Support
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() =>
+                        Alert.alert('Cancel order', 'Order cancellation is not connected yet.')
+                      }
+                      style={[styles.bottomButton, styles.secondaryButton]}
+                    >
+                      <Text allowFontScaling={false} style={styles.secondaryButtonText}>
+                        Cancel order
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => Alert.alert('Support', 'Support chat is coming soon.')}
+                      style={[styles.bottomButton, styles.primaryButton]}
+                    >
+                      <Text allowFontScaling={false} style={styles.primaryButtonText}>
+                        Support
+                      </Text>
+                    </Pressable>
+                  </>
+                )}
               </View>
             </ScrollView>
           )}
@@ -2334,7 +2313,6 @@ export function OrderStatusScreen({
 
       {renderAddressModal()}
       {renderOrderDetailsModal()}
-      {renderCourierChatModal()}
       {renderDeliveryCompleteModal()}
     </View>
   )
@@ -3808,5 +3786,150 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     fontWeight: '400',
+  },
+  cancellationCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cancellationHeader: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#718096',
+    letterSpacing: 1.2,
+    marginBottom: 12,
+  },
+  cancellationField: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  cancellationLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#4A5568',
+  },
+  cancellationValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A202C',
+  },
+  cancellationSeparator: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 12,
+  },
+  cancellationSubHeader: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4A5568',
+    marginBottom: 12,
+  },
+  snapshotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  snapshotIcon: {
+    marginRight: 12,
+    width: 16,
+    textAlign: 'center',
+  },
+  snapshotTextContainer: {
+    flex: 1,
+  },
+  snapshotLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#718096',
+    textTransform: 'uppercase',
+  },
+  snapshotValue: {
+    fontSize: 14,
+    color: '#2D3748',
+    marginTop: 2,
+  },
+  snapshotGrid: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 8,
+  },
+  snapshotGridItem: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  snapshotGridLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#718096',
+  },
+  snapshotGridValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A202C',
+    marginTop: 2,
+  },
+  financialCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  financialHeader: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#718096',
+    letterSpacing: 1.2,
+    marginBottom: 12,
+  },
+  financialRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  financialStatusWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  financialStatusIcon: {
+    marginRight: 8,
+  },
+  financialStatusText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2D3748',
+  },
+  financialFeeLabel: {
+    fontSize: 14,
+    color: '#4A5568',
+  },
+  financialFeeStruck: {
+    fontSize: 14,
+    color: '#A0AEC0',
+    textDecorationLine: 'line-through',
+    fontWeight: '600',
   },
 })

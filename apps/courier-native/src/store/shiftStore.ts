@@ -767,13 +767,14 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
   async verifyDeliveryCode(assignmentId, confirmationCode) {
     const accessToken = useAuthStore.getState().accessToken
     if (!accessToken) {
-      set({ deliveryCodeError: 'No authenticated session' })
+      set({ deliveryCodeError: 'No authenticated session', deliveryCodeRemainingAttempts: null })
       return false
     }
 
     set({
       verifyingDeliveryCodeAssignmentId: assignmentId,
-      deliveryCodeError: null
+      deliveryCodeError: null,
+      deliveryCodeRemainingAttempts: null
     })
 
     try {
@@ -784,8 +785,15 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
         const errorMsg = res.ok
           ? res.data?.error?.message ?? res.data?.message
           : res.error?.message
+
+        // Extract remaining attempts from the error response
+        const remainingAttempts = res.ok
+          ? res.data?.error?.remainingAttempts ?? res.data?.remainingAttempts
+          : res.error?.remainingAttempts
+
         set({
           deliveryCodeError: errorMsg || 'Invalid delivery confirmation code',
+          deliveryCodeRemainingAttempts: remainingAttempts ?? null,
           verifyingDeliveryCodeAssignmentId: null
         })
         return false
@@ -825,6 +833,7 @@ export const useShiftStore = create<ShiftState>((set, get) => ({
       console.error('[ShiftStore] verifyDeliveryCode exception:', err)
       set({
         deliveryCodeError: err instanceof Error ? err.message : 'Unknown verification error',
+        deliveryCodeRemainingAttempts: null,
         verifyingDeliveryCodeAssignmentId: null
       })
       return false

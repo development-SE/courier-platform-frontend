@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import {
   Pressable,
   SafeAreaView,
@@ -115,6 +115,47 @@ export function OrderDetailScreen({ navigation, route }: Props) {
   const [otpCode, setOtpCode] = useState('')
   const [isVerifying, setIsVerifying] = useState(false)
   const [codeTimedOut, setCodeTimedOut] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
+  const [hasStartedInitialCooldown, setHasStartedInitialCooldown] = useState(false)
+  const cooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const startCooldown = (seconds = 60) => {
+    if (cooldownTimerRef.current) {
+      clearInterval(cooldownTimerRef.current)
+    }
+    setResendCooldown(seconds)
+    cooldownTimerRef.current = setInterval(() => {
+      setResendCooldown(prev => {
+        if (prev <= 1) {
+          if (cooldownTimerRef.current) {
+            clearInterval(cooldownTimerRef.current)
+            cooldownTimerRef.current = null
+          }
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
+  useEffect(() => {
+    if (isOtpModalVisible && !hasStartedInitialCooldown) {
+      setHasStartedInitialCooldown(true)
+      startCooldown(60)
+    }
+  }, [isOtpModalVisible, hasStartedInitialCooldown])
+
+  useEffect(() => {
+    return () => {
+      if (cooldownTimerRef.current) {
+        clearInterval(cooldownTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    setHasStartedInitialCooldown(false)
+  }, [assignmentId])
 
   const {
     activeOrderId,
@@ -392,6 +433,7 @@ export function OrderDetailScreen({ navigation, route }: Props) {
       setCodeTimedOut(false)
       setOtpCode('')
       Alert.alert('Успех', 'Новый код подтверждения отправлен клиенту!')
+      startCooldown(60)
     } else {
       Alert.alert('Ошибка', 'Не удалось отправить код повторно')
     }
@@ -412,7 +454,8 @@ export function OrderDetailScreen({ navigation, route }: Props) {
       Alert.alert('Успех', 'Заказ успешно доставлен и подтвержден!')
       navigation.goBack()
     } else {
-      const isExpired = (deliveryCodeError || '').toLowerCase().includes('expired')
+      const error = useShiftStore.getState().deliveryCodeError
+      const isExpired = (error || '').toLowerCase().includes('expired')
       if (isExpired) {
         setCodeTimedOut(true)
         setOtpCode('')
@@ -767,16 +810,24 @@ export function OrderDetailScreen({ navigation, route }: Props) {
               style={[
                 styles.resendContainer,
                 codeTimedOut && styles.resendContainerHighlighted,
-                (resending || verifyingDeliveryCodeAssignmentId === assignmentId) && styles.disabledBtn,
+                (resending || resendCooldown > 0 || verifyingDeliveryCodeAssignmentId === assignmentId) && styles.disabledBtn,
               ]}
               onPress={handleResendOTP}
-              disabled={resending || verifyingDeliveryCodeAssignmentId === assignmentId}
+              disabled={resending || resendCooldown > 0 || verifyingDeliveryCodeAssignmentId === assignmentId}
             >
               {resending ? (
                 <ActivityIndicator size="small" color="#ff9069" />
               ) : (
-                <Text style={[styles.resendText, codeTimedOut && styles.resendTextHighlighted]}>
-                  {codeTimedOut ? 'Отправить новый код клиенту' : 'Не пришел код? Отправить повторно'}
+                <Text
+                  style={[
+                    styles.resendText,
+                    codeTimedOut && styles.resendTextHighlighted,
+                    (resendCooldown > 0 || resending) && styles.resendTextDisabled,
+                  ]}
+                >
+                  {resendCooldown > 0
+                    ? (codeTimedOut ? `Отправить новый код клиенту (${resendCooldown}с)` : `Не пришел код? Отправить повторно (${resendCooldown}с)`)
+                    : (codeTimedOut ? 'Отправить новый код клиенту' : 'Не пришел код? Отправить повторно')}
                 </Text>
               )}
             </Pressable>
@@ -1497,5 +1548,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
     gap: 10,
     justifyContent: 'flex-start',
+  },
+  resendTextDisabled: {
+    color: '#6f7485',
+    textDecorationLine: 'none',
   },
 })

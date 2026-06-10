@@ -314,6 +314,15 @@ export function RestaurantDetailScreen({
         total={placedOrder?.total ?? checkoutTotal}
         orderedItems={placedOrder?.items ?? []}
         onBackPress={() => setCurrentScreen('menu')}
+        onReorder={(items) => {
+          onClearCart()
+          items.forEach(item => {
+            for (let i = 0; i < item.quantity; i++) {
+              onAddItem(item.id)
+            }
+          })
+          setCurrentScreen('cart')
+        }}
       />
     )
   }

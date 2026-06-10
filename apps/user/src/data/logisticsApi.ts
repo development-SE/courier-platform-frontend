@@ -15,6 +15,8 @@ export type CourierAssignmentResponse = {
   assignedAt: string
   etaMinutes?: number
   transportType?: string
+  cancellationReason?: string
+  rejectionReason?: string
 }
 
 export type PagedAssignmentsPayload = {
@@ -31,6 +33,23 @@ export type CourierLocationResponse = {
   isOnline: boolean
   updatedAt: string
   transportType?: string
+}
+
+export type CourierDetailsResponse = {
+  courierId: string
+  name?: string
+  surname?: string
+  phone?: string
+  transportType?: string
+  rating?: number
+}
+
+export async function getCourierDetails(accessToken: string, courierId: string) {
+  return apiRequest<ApiResponse<CourierDetailsResponse>>(`/api/v1/logistics/couriers/${courierId}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
 }
 
 export async function getOrderAssignment(accessToken: string, orderId: string) {

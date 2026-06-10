@@ -43,6 +43,7 @@ export type UserOrder = {
   status: string
   serviceType?: string
   comment?: string
+  parcelSize?: 'SMALL' | 'MEDIUM' | 'LARGE'
   totalAmount?: number
   itemsCount?: number
   companyId?: string

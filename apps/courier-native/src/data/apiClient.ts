@@ -6,7 +6,7 @@ type ApiError = {
 }
 
 const DEFAULT_BASE_URL = Platform.select({
-  android: 'http://10.0.2.2:8080',
+  android: 'http://10.202.3.82:8080',
   ios: 'http://localhost:8080',
   default: 'http://localhost:8080',
 })
@@ -49,7 +49,15 @@ export async function apiRequest<T>(
 
     const contentType = response.headers.get('content-type') ?? ''
     const isJson = contentType.includes('application/json')
-    const payload = isJson ? await response.json() : null
+    let payload: any = null
+    
+    if (isJson) {
+      try {
+        payload = await response.json()
+      } catch (e) {
+        payload = null
+      }
+    }
 
     if (!response.ok) {
       const message: string =
@@ -58,6 +66,13 @@ export async function apiRequest<T>(
         payload?.data?.message ??
         `Request failed with status ${response.status}`
       return { ok: false, error: { message, status: response.status } }
+    }
+
+    if (payload === null && response.status !== 204) {
+      return {
+        ok: false,
+        error: { message: 'Invalid response from server: expected JSON payload' },
+      }
     }
 
     return { ok: true, data: payload as T }

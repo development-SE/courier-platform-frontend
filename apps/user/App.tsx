@@ -251,8 +251,8 @@ export default function App() {
       return { ok: false as const, message: response.error.message }
     }
 
-    if (!response.data.success || !response.data.data?.accessToken) {
-      const message = response.data.error?.message ?? response.data.message ?? 'Invalid email or password'
+    if (!response.data || !response.data.success || !response.data.data?.accessToken) {
+      const message = response.data?.error?.message ?? response.data?.message ?? 'Invalid email or password'
       return { ok: false as const, message }
     }
 
@@ -264,7 +264,7 @@ export default function App() {
 
     // Fetch full profile to get firstName, lastName, phone
     const profileResponse = await getUserProfile(nextSession.accessToken)
-    if (profileResponse.ok && profileResponse.data.success && profileResponse.data.data) {
+    if (profileResponse.ok && profileResponse.data && profileResponse.data.success && profileResponse.data.data) {
       const profile = profileResponse.data.data
       nextSession = {
         ...nextSession,
@@ -298,8 +298,8 @@ export default function App() {
       return { ok: false as const, message: response.error.message }
     }
 
-    if (!response.data.success) {
-      const message = response.data.error?.message ?? response.data.message ?? 'Registration failed'
+    if (!response.data || !response.data.success) {
+      const message = response.data?.error?.message ?? response.data?.message ?? 'Registration failed'
       return { ok: false as const, message }
     }
 

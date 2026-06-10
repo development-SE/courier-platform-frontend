@@ -22,6 +22,8 @@ import * as Notifications from 'expo-notifications'
 import { SCREEN_IDS } from '../../constants/screenIds'
 import { appTheme } from '../../theme/appTheme'
 import { useDashboardModel } from './useDashboardModel'
+import { useShallow } from 'zustand/react/shallow'
+import { useShiftStore } from '../../store/shiftStore'
 import { useAuthStore } from '../../store/authStore'
 
 const STATUS_LABEL: Record<'offline' | 'online' | 'busy', string> = {
@@ -168,20 +170,109 @@ export function DashboardScreen() {
     }
   }
 
+  // Cooldown and Resend states for OTP modal
+  const [codeTimedOut, setCodeTimedOut] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
+  const cooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const {
+    verifyingDeliveryCodeAssignmentId,
+    deliveryCodeError,
+    deliveryCodeRemainingAttempts,
+    verifyDeliveryCode,
+    resendDeliveryCode,
+  } = useShiftStore(
+    useShallow(state => ({
+      verifyingDeliveryCodeAssignmentId: state.verifyingDeliveryCodeAssignmentId,
+      deliveryCodeError: state.deliveryCodeError,
+      deliveryCodeRemainingAttempts: state.deliveryCodeRemainingAttempts,
+      verifyDeliveryCode: state.verifyDeliveryCode,
+      resendDeliveryCode: state.resendDeliveryCode,
+    }))
+  )
+
+  const startCooldown = (seconds = 60) => {
+    if (cooldownTimerRef.current) {
+      clearInterval(cooldownTimerRef.current)
+    }
+    setResendCooldown(seconds)
+    cooldownTimerRef.current = setInterval(() => {
+      setResendCooldown(prev => {
+        if (prev <= 1) {
+          if (cooldownTimerRef.current) {
+            clearInterval(cooldownTimerRef.current)
+            cooldownTimerRef.current = null
+          }
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
+  const [hasStartedInitialCooldown, setHasStartedInitialCooldown] = useState(false)
+
+  useEffect(() => {
+    if (isOtpModalVisible && !hasStartedInitialCooldown) {
+      setHasStartedInitialCooldown(true)
+      startCooldown(60)
+    }
+  }, [isOtpModalVisible, hasStartedInitialCooldown])
+
+  useEffect(() => {
+    return () => {
+      if (cooldownTimerRef.current) {
+        clearInterval(cooldownTimerRef.current)
+      }
+    }
+  }, [])
+
+  const assignmentId = activeOrder?.id
+
+  useEffect(() => {
+    setHasStartedInitialCooldown(false)
+  }, [assignmentId])
+
+  const handleResendOTP = async () => {
+    if (!assignmentId) return
+    setResending(true)
+    const success = await resendDeliveryCode(assignmentId)
+    setResending(false)
+    if (success) {
+      setCodeTimedOut(false)
+      setOtpCode('')
+      Alert.alert('Успех', 'Новый код подтверждения отправлен клиенту!')
+      startCooldown(60)
+    } else {
+      Alert.alert('Ошибка', 'Не удалось отправить код повторно')
+    }
+  }
+
   const handleVerifyOTP = async () => {
     if (!otpCode.trim()) {
       Alert.alert('Ошибка', 'Пожалуйста, введите код подтверждения')
       return
     }
+    if (!assignmentId) return
+
     setIsVerifying(true)
-    const res = await verifyOTP(otpCode.trim())
+    const success = await verifyDeliveryCode(assignmentId, otpCode.trim())
     setIsVerifying(false)
-    if (res.success) {
+    if (success) {
       setIsOtpModalVisible(false)
       setOtpCode('')
+      setCodeTimedOut(false)
       Alert.alert('Успех', 'Заказ успешно доставлен и подтвержден!')
     } else {
-      Alert.alert('Ошибка подтверждения', res.message || 'Неверный код')
+      const error = useShiftStore.getState().deliveryCodeError
+      const isExpired = (error || '').toLowerCase().includes('expired')
+      if (isExpired) {
+        setCodeTimedOut(true)
+        setOtpCode('')
+      } else {
+        Alert.alert('Ошибка подтверждения', error || 'Неверный код')
+      }
     }
   }
 
@@ -786,17 +877,59 @@ export function DashboardScreen() {
             <Text style={styles.modalText}>
               Пожалуйста, попросите у клиента 6-значный код подтверждения и введите его ниже для завершения доставки.
             </Text>
-            
+
+            {codeTimedOut && (
+              <View style={styles.codeExpiredBanner}>
+                <Ionicons name="time-outline" size={16} color="#f59e0b" />
+                <Text style={styles.codeExpiredBannerText}>
+                  Код устарел. Нажмите «Отправить повторно» — клиент получит новый код.
+                </Text>
+              </View>
+            )}
+
             <TextInput
-              style={styles.otpInput}
+              style={[styles.otpInput, codeTimedOut && styles.otpInputExpired]}
               placeholder="000000"
               placeholderTextColor="#6f7485"
               keyboardType="number-pad"
               maxLength={6}
               value={otpCode}
-              onChangeText={setOtpCode}
-              editable={!isVerifying}
+              onChangeText={text => { setOtpCode(text); if (codeTimedOut) setCodeTimedOut(false) }}
+              editable={!(verifyingDeliveryCodeAssignmentId === assignmentId) && !resending && !isVerifying}
             />
+
+            {deliveryCodeError && !codeTimedOut && (
+              <Text style={styles.modalErrorText}>
+                {deliveryCodeError}
+                {deliveryCodeRemainingAttempts != null && ` (осталось попыток: ${deliveryCodeRemainingAttempts})`}
+              </Text>
+            )}
+
+            <Pressable
+              style={[
+                styles.resendContainer,
+                codeTimedOut && styles.resendContainerHighlighted,
+                (resending || resendCooldown > 0 || verifyingDeliveryCodeAssignmentId === assignmentId || isVerifying) && styles.disabledBtn,
+              ]}
+              onPress={handleResendOTP}
+              disabled={resending || resendCooldown > 0 || verifyingDeliveryCodeAssignmentId === assignmentId || isVerifying}
+            >
+              {resending ? (
+                <ActivityIndicator size="small" color="#ff9069" />
+              ) : (
+                <Text
+                  style={[
+                    styles.resendText,
+                    codeTimedOut && styles.resendTextHighlighted,
+                    (resendCooldown > 0 || resending) && styles.resendTextDisabled,
+                  ]}
+                >
+                  {resendCooldown > 0
+                    ? (codeTimedOut ? `Отправить новый код клиенту (${resendCooldown}с)` : `Не пришел код? Отправить повторно (${resendCooldown}с)`)
+                    : (codeTimedOut ? 'Отправить новый код клиенту' : 'Не пришел код? Отправить повторно')}
+                </Text>
+              )}
+            </Pressable>
 
             <View style={styles.modalActions}>
               <Pressable
@@ -804,8 +937,9 @@ export function DashboardScreen() {
                 onPress={() => {
                   setIsOtpModalVisible(false)
                   setOtpCode('')
+                  setCodeTimedOut(false)
                 }}
-                disabled={isVerifying}
+                disabled={verifyingDeliveryCodeAssignmentId === assignmentId || resending || isVerifying}
               >
                 <Text style={styles.modalBtnTextCancel}>Отмена</Text>
               </Pressable>
@@ -813,9 +947,9 @@ export function DashboardScreen() {
               <Pressable
                 style={[styles.modalBtn, styles.modalBtnConfirm]}
                 onPress={handleVerifyOTP}
-                disabled={isVerifying}
+                disabled={verifyingDeliveryCodeAssignmentId === assignmentId || resending || isVerifying}
               >
-                {isVerifying ? (
+                {verifyingDeliveryCodeAssignmentId === assignmentId || isVerifying ? (
                   <ActivityIndicator size="small" color="#2d1b13" />
                 ) : (
                   <Text style={styles.modalBtnTextConfirm}>Подтвердить</Text>
@@ -2046,5 +2180,65 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 6,
     elevation: 3,
+  },
+  disabledBtn: {
+    opacity: 0.6,
+  },
+  modalErrorText: {
+    color: '#ef706a',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  resendContainer: {
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resendContainerHighlighted: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 144, 105, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 144, 105, 0.4)',
+  },
+  resendText: {
+    color: '#ff9069',
+    fontSize: 13,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  resendTextHighlighted: {
+    textDecorationLine: 'none',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  codeExpiredBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  codeExpiredBannerText: {
+    color: '#f59e0b',
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+    lineHeight: 16,
+  },
+  otpInputExpired: {
+    borderColor: 'rgba(245, 158, 11, 0.6)',
+    color: '#6f7485',
+  },
+  resendTextDisabled: {
+    color: '#6f7485',
+    textDecorationLine: 'none',
   },
 })
